@@ -1,0 +1,9 @@
+[package]
+name = "sim"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+minifb = "0.28.0"
+raqote = "0.8.5"
+font-kit = "0.14.3"
