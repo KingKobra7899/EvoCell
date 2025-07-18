@@ -29,8 +29,8 @@ fn main() {
 
             let pos_string = format!("{:?}", pos);
             dt.draw_text(&font, 36., &pos_string, Point::new(0., 100.),
-                         &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, 0, 0, 0)),
-                         &DrawOptions::new(),
+                        &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, 0, 0, 0)),
+                        &DrawOptions::new(),
             );
 
             window.update_with_buffer(dt.get_data(), size.0, size.1).unwrap();
