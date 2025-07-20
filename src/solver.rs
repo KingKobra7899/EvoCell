@@ -2,16 +2,16 @@ use nalgebra::Vector2;
 mod quadtree;
 use quadtree::{QuadTree, Rect};
 pub struct PhysicsSolver{
-    positions: Vec<Vector2<f32>>,
+    pub positions: Vec<Vector2<f32>>,
     old_positions: Vec<Vector2<f32>>,
     accelerations: Vec<Vector2<f32>>,
     masses: Vec<f32>,
-    radii: Vec<f32>,
+    pub radii: Vec<f32>,
     width: i32,
     height: i32,
     qt: QuadTree,
     center: Vector2<f32>,
-    num_particles: i32
+    pub num_particles: i32
 }
 
 impl PhysicsSolver{
@@ -133,12 +133,12 @@ impl PhysicsSolver{
             for _ in 0..substeps {
                 self.integrate_forces(dt / (substeps as f32), grav);
                 self.inter_particle_collisions();
-                self.apply_circular_constraint(250.0);
+                self.apply_circular_constraint(500.0);
             }
         }else{
             self.integrate_forces(dt, grav);
             self.inter_particle_collisions();
-            self.apply_circular_constraint(250.0);
+            self.apply_circular_constraint(500.0);
         }
     }
 }

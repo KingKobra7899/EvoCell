@@ -8,3 +8,5 @@ winit = "0.30.11"
 wgpu = "26.0.1"
 font-kit = "0.14.3"
 nalgebra = "0.33.2"
+bytemuck = { version = "1.4", features = ["derive"] }
+pollster = "0.4.0"

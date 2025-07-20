@@ -1,123 +1,143 @@
+// main.rs
 use nalgebra::Vector2;
 use std::time::Instant;
 use winit::{
-    event::{Event, KeyEvent, WindowEvent},
+    application::ApplicationHandler,
+    event::{KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
-    window::Window,
+    window::{Window, WindowId},
 };
 
-mod solver; // Assuming solver.rs exists and contains PhysicsSolver
-use solver::PhysicsSolver;
+mod solver;
+mod gpu_renderer; // Import our new module
 
-fn main() {
-    // Define window dimensions
-    const WIDTH: usize = 1000;
-    const HEIGHT: usize = 1000;
+const WIDTH: usize = 1000;
+const HEIGHT: usize = 1000;
 
-    // Initialize the winit event loop. This is the core of event handling.
-    let event_loop = EventLoop::new().expect("Failed to create EventLoop");
+struct App {
+    window: Option<Window>,
+    gpu_renderer: Option<gpu_renderer::GpuRenderer>,
+    physics_solver: solver::PhysicsSolver,
+    frame_count: u32,
+    last_fps_time: Instant,
+}
 
-    // Create a new window for our application.
-    let window_attributes = Window::default_attributes()
-        .with_title("WGPU Physics Simulation") // Set the window's title bar text
-        .with_inner_size(winit::dpi::PhysicalSize::new(WIDTH as u32, HEIGHT as u32)); // Set the window's resolution
-    
-    let window = event_loop.create_window(window_attributes)
-        .expect("Failed to create window"); // Handle any errors during window creation
+impl App {
+    fn new() -> Self {
+        let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
+        
+        
+        physics_solver.add_particle_grid(40, 50, Vector2::new(200.0, 100.0), 7.0, 14.0, 1.0);
 
-    // Initialize the physics solver with the window's dimensions.
-    let mut physics_solver = PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
+        Self {
+            window: None,
+            gpu_renderer: None,
+            physics_solver,
+            frame_count: 0,
+            last_fps_time: Instant::now(),
+        }
+    }
+}
 
-    // Add a grid of particles to the simulation for visual demonstration.
-    physics_solver.add_particle_grid(10, 10, Vector2::new(200.0, 200.0), 5.0, 10.0, 1.0);
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if self.window.is_none() {
+            let window_attributes = Window::default_attributes()
+                .with_title("WGPU Physics Simulation (Per-Pixel)")
+                .with_inner_size(winit::dpi::PhysicalSize::new(WIDTH as u32, HEIGHT as u32));
 
-    // Variables for tracking performance (FPS) and frame timing.
-    let mut frame_count = 0;
-    let mut last_fps_time = Instant::now();
-    let mut last_frame_time = Instant::now();
+            let window = event_loop
+                .create_window(window_attributes)
+                .expect("Failed to create window");
 
-    // Start the winit event loop. This loop will continuously process events
-    // and drive our application's updates and rendering.
-    event_loop.run(move |event, active_event_loop| {
-        // Set the control flow to 'Poll' to ensure the application continuously
-        // processes events and requests redraws, suitable for a game loop.
-        active_event_loop.set_control_flow(ControlFlow::Poll);
+            // Initialize GpuRenderer
+            self.gpu_renderer = Some(pollster::block_on(gpu_renderer::GpuRenderer::new(&window)));
+            self.window = Some(window);
+        }
+    }
 
-        // Match on the type of event received.
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        // Poll regularly to keep the simulation and rendering active
+        event_loop.set_control_flow(ControlFlow::Poll);
+
         match event {
-            // Handle events specific to our window.
-            Event::WindowEvent {
-                event, window_id,
-            } if window_id == window.id() => {
-                match event {
-                    // If the user requests to close the window (e.g., by clicking the 'X' button).
-                    WindowEvent::CloseRequested => {
-                        println!("Close requested. Exiting.");
-                        active_event_loop.exit(); // Signal the event loop to terminate.
-                    }
-                    // Handle keyboard input events.
-                    WindowEvent::KeyboardInput {
-                        event: KeyEvent {
-                            physical_key: PhysicalKey::Code(KeyCode::Escape), // Check if the Escape key was pressed.
-                            state,
-                            ..
-                        },
-                        ..
-                    } => {
-                        // Only exit if the Escape key was pressed down, not released.
-                        if state.is_pressed() {
-                            println!("Escape key pressed. Exiting.");
-                            active_event_loop.exit(); // Signal the event loop to terminate.
-                        }
-                    }
-                    // This event is triggered when the window needs to be redrawn.
-                    // This is where our main game loop logic (physics update, rendering) goes.
-                    WindowEvent::RedrawRequested => {
-                        // Record the start time of the current frame for performance tracking.
-                        let frame_start = Instant::now();
+            WindowEvent::CloseRequested => {
+                println!("Close requested. Exiting.");
+                event_loop.exit();
+            }
 
-                        // --- Physics Update Logic ---
-                        // Update the physics simulation. We're assuming `PhysicsSolver::update`
-                        // no longer needs a `dt` (draw target) argument as WGPU will handle rendering.
-                        physics_solver.update(0.03, 1, Vector2::new(0.0, 10.0));
-                        
-                        // --- WGPU Rendering Placeholder ---
-                        // This is where you would integrate your `wgpu` rendering code.
-                        // In a typical WGPU application, you would:
-                        // 1. Get the current texture from the window's swap chain.
-                        // 2. Create a command encoder.
-                        // 3. Begin a render pass, setting up the output target (the texture).
-                        // 4. Issue draw commands using your WGPU pipeline and buffers (likely derived from `physics_solver` data).
-                        // 5. End the render pass and submit the command buffer to the GPU queue.
-                        // 6. Present the rendered texture to the screen.
-                        // Example: Your custom `render(&window, &physics_solver)` function would be called here.
-
-                        // --- FPS Calculation ---
-                        frame_count += 1; // Increment the frame counter.
-
-                        let now = Instant::now();
-                        // Check if one second has passed since the last FPS measurement.
-                        if now.duration_since(last_fps_time).as_secs() >= 1 {
-                            // Calculate FPS and print it to the console.
-                            let fps = frame_count as f64 / now.duration_since(last_fps_time).as_secs_f64();
-                            println!("FPS: {:.1}", fps);
-                            frame_count = 0; // Reset frame count.
-                            last_fps_time = now; // Update the last FPS measurement time.
-                        }
-
-                        last_frame_time = frame_start; // Store the start time for the next frame's delta calculation (if needed).
-                    }
-                    _ => (), // Ignore other window events.
+            WindowEvent::KeyboardInput {
+                event: KeyEvent {
+                    physical_key: PhysicalKey::Code(KeyCode::Escape),
+                    state,
+                    ..
+                },
+                ..
+            } => {
+                if state.is_pressed() {
+                    println!("Escape key pressed. Exiting.");
+                    event_loop.exit();
                 }
             }
-            // This event is triggered when the event loop is about to go idle
-            // and wait for new events. It's the perfect place to do continuous
-            // updates and then request a redraw.
-            Event::AboutToWait => {
-                window.request_redraw(); // Ask the window to redraw itself.
+
+            WindowEvent::RedrawRequested => {
+                // Update physics
+                self.physics_solver.update(0.03, 1, Vector2::new(0.0, 10.0)); // Gravity: (0, 10)
+
+                // Prepare particle data for GPU
+                let num_physics_particles = self.physics_solver.positions.len();
+                let mut gpu_particles: Vec<gpu_renderer::GpuParticle> = Vec::with_capacity(num_physics_particles);
+                for i in 0..num_physics_particles {
+                    gpu_particles.push(gpu_renderer::GpuParticle {
+                        position: [self.physics_solver.positions[i].x, self.physics_solver.positions[i].y],
+                        radius: self.physics_solver.radii[i],
+                        _padding: 0.0,
+                    });
+                }
+
+                // Render the current state
+                if let (Some(renderer), Some(window)) = (&mut self.gpu_renderer, &self.window) {
+                    renderer.render(window, &gpu_particles, num_physics_particles as u32);
+                }
+
+                // FPS Calculation
+                self.frame_count += 1;
+                let now = Instant::now();
+                if now.duration_since(self.last_fps_time).as_secs() >= 1 {
+                    let fps = self.frame_count as f64 / now.duration_since(self.last_fps_time).as_secs_f64();
+                    println!("FPS: {:.1}", fps);
+                    self.frame_count = 0;
+                    self.last_fps_time = now;
+                }
             }
-            _ => (), // Ignore any other events.
+            // Handle window resizing to update surface configuration
+            WindowEvent::Resized(physical_size) => {
+                if let Some(renderer) = &mut self.gpu_renderer {
+                    renderer.resize(physical_size);
+                }
+            }
+
+            _ => {}
         }
-    }).expect("EventLoop run failed"); // Handle any errors that cause the event loop to fail.
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        // Request a redraw every frame to keep the simulation moving
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
+}
+
+fn main() {
+    let event_loop = EventLoop::new().expect("Failed to create EventLoop");
+    let mut app = App::new();
+
+    event_loop.run_app(&mut app).expect("EventLoop run failed");
 }
