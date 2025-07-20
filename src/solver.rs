@@ -1,5 +1,4 @@
 use nalgebra::Vector2;
-use raqote::{DrawTarget, DrawOptions, PathBuilder, SolidSource, Source};
 mod quadtree;
 use quadtree::{QuadTree, Rect};
 pub struct PhysicsSolver{
@@ -112,38 +111,6 @@ impl PhysicsSolver{
         }
     }
 
-    pub fn render(&self, dt: &mut DrawTarget) {
-        let two_pi = 2.0 * std::f32::consts::PI;
-    
-        let solid_source = Source::Solid(SolidSource::from_unpremultiplied_argb(
-            255,
-            255,
-            100,
-            150
-        ));
-    
-        for i in 0..(self.num_particles as usize) {
-            let pos: Vector2<f32> = self.positions[i];
-            let radius = self.radii[i];
-            
-            if !pos.x.is_finite() || !pos.y.is_finite() || !radius.is_finite() {
-                eprintln!("Invalid values at particle {}: pos=({}, {}), radius={}", 
-                         i, pos.x, pos.y, radius);
-                continue;
-            }
-            
-            let mut path = PathBuilder::new();
-            path.arc(pos.x, pos.y, radius, 0.0, two_pi);
-            let circle_path = path.finish();
-        
-            dt.fill(
-                &circle_path,
-                &solid_source,
-                &DrawOptions::new(),
-            );
-        }
-    }
-
     pub fn apply_circular_constraint(&mut self, con_radius: f32){
         for i in 0..(self.num_particles as usize){
             let mut pos: Vector2<f32> = self.positions[i];
@@ -160,7 +127,7 @@ impl PhysicsSolver{
         }
     }
 
-    pub fn update(&mut self, draw_target: &mut DrawTarget, dt: f32, substeps: i32, grav: Vector2<f32>){
+    pub fn update(&mut self, dt: f32, substeps: i32, grav: Vector2<f32>){
         self.update_quadtree();
         if substeps > 1{
             for _ in 0..substeps {
@@ -173,6 +140,5 @@ impl PhysicsSolver{
             self.inter_particle_collisions();
             self.apply_circular_constraint(250.0);
         }
-        self.render(draw_target);
     }
 }
