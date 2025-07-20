@@ -1,39 +1,42 @@
-use minifb::{MouseMode, Window, WindowOptions, ScaleMode, Scale};
-use raqote::{DrawTarget, SolidSource, Source, DrawOptions, PathBuilder, Point, Transform, StrokeStyle};
-use font_kit::family_name::FamilyName;
-use font_kit::properties::Properties;
-use font_kit::source::SystemSource;
+use minifb::{Key, Window, WindowOptions, ScaleMode, Scale};
+use raqote::{DrawTarget, SolidSource, Source, PathBuilder, DrawOptions, Point};
+use std::f32::consts::PI;
+
+fn render_circle(radius: f32, position: (f32, f32), dt: &mut DrawTarget) {
+    let mut pb = PathBuilder::new();
+    pb.arc(position.0, position.1, radius, 0.0, 2.0 * PI); // radians
+    let path = pb.finish();
+
+    dt.fill(
+        &path,
+        &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, 0xff, 0x80, 0x80)),
+        &DrawOptions::new(),
+    );
+}
 
 fn main() {
     const WIDTH: usize = 500;
     const HEIGHT: usize = 500;
-    let mut window = Window::new("window", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
 
-    let size = window.get_size();
-    let mut dt = DrawTarget::new(size.0 as i32, size.1 as i32);
+    let mut window = Window::new(
+        "window",
+        WIDTH,
+        HEIGHT,
+        WindowOptions {
+            resize: false,
+            scale_mode: ScaleMode::Stretch,
+            scale: Scale::X1,
+            ..WindowOptions::default()
+        },
+    ).unwrap();
 
-    let font = SystemSource::new()
-        .select_best_match(&[FamilyName::SansSerif], &Properties::new())
-        .unwrap()
-        .load()
-        .unwrap();
+    let mut dt = DrawTarget::new(WIDTH as i32, HEIGHT as i32);
 
-    loop {
-        dt.clear(SolidSource::from_unpremultiplied_argb(0xff, 0xff, 0xff, 0xff));
-        let mut pb = PathBuilder::new();
-        if let Some(pos) = window.get_mouse_pos(MouseMode::Clamp) {
+    while window.is_open() && !window.is_key_down(Key::Escape) {
+        dt.clear(SolidSource::from_unpremultiplied_argb(0xff, 0x20, 0x20, 0x30));
 
-            pb.rect(pos.0, pos.1, 100., 130.);
-            let path = pb.finish();
-            dt.fill(&path, &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, 0, 0xff, 0)), &DrawOptions::new());
+        render_circle(50.0, (250.0, 250.0), &mut dt);
 
-            let pos_string = format!("{:?}", pos);
-            dt.draw_text(&font, 36., &pos_string, Point::new(0., 100.),
-                        &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, 0, 0, 0)),
-                        &DrawOptions::new(),
-            );
-
-            window.update_with_buffer(dt.get_data(), size.0, size.1).unwrap();
-        }
+        window.update_with_buffer(dt.get_data(), WIDTH, HEIGHT).unwrap();
     }
 }
