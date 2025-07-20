@@ -1,6 +1,7 @@
 use nalgebra::Vector2;
 use raqote::{DrawTarget, DrawOptions, PathBuilder, SolidSource, Source};
-
+mod quadtree;
+use quadtree::{QuadTree, Rect};
 pub struct PhysicsSolver{
     positions: Vec<Vector2<f32>>,
     old_positions: Vec<Vector2<f32>>,
@@ -9,13 +10,36 @@ pub struct PhysicsSolver{
     radii: Vec<f32>,
     width: i32,
     height: i32,
+    qt: QuadTree,
     center: Vector2<f32>,
     num_particles: i32
 }
 
 impl PhysicsSolver{
     pub fn new(width: i32, height: i32) -> PhysicsSolver{
-        return PhysicsSolver { positions: Vec::new(), old_positions: Vec::new(), accelerations: Vec::new(), masses: Vec::new(), radii: Vec::new(), width: width, height: height, num_particles: 0, center: Vector2::new((width as f32) / 2.0, (height as f32) / 2.0)}
+        return PhysicsSolver { positions: Vec::new(), old_positions: Vec::new(), 
+            accelerations: Vec::new(), masses: Vec::new(), radii: Vec::new(), 
+            width: width, height: height, num_particles: 0, 
+            center: Vector2::new((width as f32) / 2.0, (height as f32) / 2.0),
+            qt: QuadTree::new(Rect::new((width as f32) / 2.0, (height as f32) / 2.0, (width as f32) / 2.0, (height as f32) / 2.0), 5)}
+    }
+
+    pub fn add_particle_grid(
+        &mut self,
+        num_x: usize,
+        num_y: usize,
+        start_pos: Vector2<f32>,
+        radius: f32,
+        spacing: f32,
+        mass: f32,
+    ) {
+        for y in 0..num_y {
+            for x in 0..num_x {
+                let pos_x = start_pos.x + x as f32 * spacing;
+                let pos_y = start_pos.y + y as f32 * spacing;
+                self.add_particle(Vector2::new(pos_x, pos_y), mass, radius);
+            }
+        }
     }
 
     pub fn add_particle(&mut self, pos: Vector2<f32>, mass: f32, radius: f32){
@@ -46,52 +70,75 @@ impl PhysicsSolver{
         }
     }
 
-    pub fn render(&self, dt: &mut DrawTarget) {
+    pub fn update_quadtree(&mut self) {
+        self.qt.clear();
         
-        let mut min_vel_mag: f32 = f32::INFINITY;
-        let mut max_vel_mag: f32 = 0.0;
-        
-        for i in 0..(self.num_particles as usize) {
-            let vel: Vector2<f32> = self.positions[i] - self.old_positions[i]; 
-            let vel_magnitude: f32 = vel.magnitude();
-            min_vel_mag = min_vel_mag.min(vel_magnitude);
-            max_vel_mag = max_vel_mag.max(vel_magnitude);
+        for i in 0..self.num_particles as usize {
+            self.qt.insert(&self.positions[i], i as i32); // Adjust based on your QuadTree's insert signature
         }
-        
-        
-        let vel_range = if max_vel_mag > min_vel_mag { max_vel_mag - min_vel_mag } else { 1.0 };
-        
+    }
+
+    pub fn inter_particle_collisions(&mut self){
+        for i in 0..(self.num_particles as usize){
+            let pos: Vector2<f32> = self.positions[i];
+            let r: f32 = self.radii[i];
+            let col_box = Rect::new(pos.x, pos.y, 3.0 * r, 3.0 * r);
+
+            let indices = self.qt.query(&col_box);
+
+            for n in indices{
+                if n == (i as i32){
+                    continue;
+                }
+                
+                let other_pos: Vector2<f32> = self.positions[n as usize];
+                let other_r: f32 = self.radii[n as usize];
+
+                let col_axis: Vector2<f32> = pos - other_pos;
+                let dist = col_axis.magnitude();
+
+                if dist < (r + other_r){
+                    let norm: Vector2<f32> = col_axis / dist;
+
+                    let overlap: f32 =  (r + other_r) - dist;
+
+                    let sep1: f32 = overlap * (other_r / (r + other_r));
+                    let sep2: f32 = overlap * (r / (r + other_r));
+                    
+                    self.positions[i] += 0.5 * norm * sep1;
+                    self.positions[n as usize] -= 0.5 * norm * sep2;
+                }
+            }
+        }
+    }
+
+    pub fn render(&self, dt: &mut DrawTarget) {
+        let two_pi = 2.0 * std::f32::consts::PI;
+    
+        let solid_source = Source::Solid(SolidSource::from_unpremultiplied_argb(
+            255,
+            255,
+            100,
+            150
+        ));
+    
         for i in 0..(self.num_particles as usize) {
-            let pos = self.positions[i];
+            let pos: Vector2<f32> = self.positions[i];
             let radius = self.radii[i];
-            let vel: Vector2<f32> = self.positions[i] - self.old_positions[i];
             
             if !pos.x.is_finite() || !pos.y.is_finite() || !radius.is_finite() {
                 eprintln!("Invalid values at particle {}: pos=({}, {}), radius={}", 
                          i, pos.x, pos.y, radius);
                 continue;
             }
-
-            let vel_magnitude = (vel.x * vel.x + vel.y * vel.y).sqrt();
-            
-            
-            let normalized_vel = (vel_magnitude - min_vel_mag) / vel_range;
-            
-            
-            let red_value = (normalized_vel * 255.0) as u8;
             
             let mut path = PathBuilder::new();
-            path.arc(pos.x, pos.y, radius, 0.0, 2.0 * std::f32::consts::PI);
+            path.arc(pos.x, pos.y, radius, 0.0, two_pi);
             let circle_path = path.finish();
-    
+        
             dt.fill(
                 &circle_path,
-                &Source::Solid(SolidSource::from_unpremultiplied_argb(
-                    255,        
-                    red_value,  
-                    100,        
-                    150         
-                )),
+                &solid_source,
                 &DrawOptions::new(),
             );
         }
@@ -114,13 +161,16 @@ impl PhysicsSolver{
     }
 
     pub fn update(&mut self, draw_target: &mut DrawTarget, dt: f32, substeps: i32, grav: Vector2<f32>){
+        self.update_quadtree();
         if substeps > 1{
             for _ in 0..substeps {
                 self.integrate_forces(dt / (substeps as f32), grav);
+                self.inter_particle_collisions();
                 self.apply_circular_constraint(250.0);
             }
         }else{
             self.integrate_forces(dt, grav);
+            self.inter_particle_collisions();
             self.apply_circular_constraint(250.0);
         }
         self.render(draw_target);
