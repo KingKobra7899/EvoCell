@@ -9,6 +9,7 @@ pub struct PhysicsSolver{
     pub radii: Vec<f32>,
     width: i32,
     height: i32,
+    boundary: Rect,
     qt: QuadTree,
     center: Vector2<f32>,
     pub num_particles: i32
@@ -19,6 +20,7 @@ impl PhysicsSolver{
         return PhysicsSolver { positions: Vec::new(), old_positions: Vec::new(), 
             accelerations: Vec::new(), masses: Vec::new(), radii: Vec::new(), 
             width: width, height: height, num_particles: 0, 
+            boundary: Rect::new((width/2) as f32, (height/2) as f32, (width/2) as f32, (height/2) as f32),
             center: Vector2::new((width as f32) / 2.0, (height as f32) / 2.0),
             qt: QuadTree::new(Rect::new((width as f32) / 2.0, (height as f32) / 2.0, (width as f32) / 2.0, (height as f32) / 2.0), 5)}
     }
@@ -31,19 +33,21 @@ impl PhysicsSolver{
         radius: f32,
         spacing: f32,
         mass: f32,
+        vel: Vector2<f32>
     ) {
         for y in 0..num_y {
             for x in 0..num_x {
                 let pos_x = start_pos.x + x as f32 * spacing;
                 let pos_y = start_pos.y + y as f32 * spacing;
-                self.add_particle(Vector2::new(pos_x, pos_y), mass, radius);
+                self.add_particle(Vector2::new(pos_x, pos_y), mass, radius, vel);
             }
         }
+        
     }
 
-    pub fn add_particle(&mut self, pos: Vector2<f32>, mass: f32, radius: f32){
+    pub fn add_particle(&mut self, pos: Vector2<f32>, mass: f32, radius: f32, vel: Vector2<f32>){
         self.positions.push(pos);
-        self.old_positions.push(pos);
+        self.old_positions.push(pos - vel);
         self.accelerations.push(Vector2::new(0.0,0.0));
         self.masses.push(mass);
         self.radii.push(radius);
@@ -113,7 +117,7 @@ impl PhysicsSolver{
 
     pub fn apply_circular_constraint(&mut self, con_radius: f32){
         for i in 0..(self.num_particles as usize){
-            let mut pos: Vector2<f32> = self.positions[i];
+            let pos: Vector2<f32> = self.positions[i];
             let radius: f32 = self.radii[i];
 
             let to_obj: Vector2<f32> = pos - self.center;
@@ -127,18 +131,40 @@ impl PhysicsSolver{
         }
     }
 
+    pub fn apply_rect_constraint(&mut self, rectangle: Rect) {
+        let buffer = 20.0; // depending on max radius or velocity
+        let expanded_rect = Rect::new(rectangle.x, rectangle.y, rectangle.w + buffer, rectangle.h + buffer);
+    
+        for i in self.qt.query(&expanded_rect) {
+            let pos = &mut self.positions[i as usize];
+            let r = self.radii[i as usize];
+    
+            let y_top = rectangle.y - rectangle.h;
+            let y_bottom = rectangle.y + rectangle.h;
+            let x_left = rectangle.x - rectangle.w;
+            let x_right = rectangle.x + rectangle.w;
+    
+            if pos.y - r < y_top {
+                pos.y = y_top + r;
+            } else if pos.y + r > y_bottom {
+                pos.y = y_bottom - r;
+            }
+    
+            if pos.x - r < x_left {
+                pos.x = x_left + r;
+            } else if pos.x + r > x_right {
+                pos.x = x_right - r;
+            }
+        }
+    }
+    
+
     pub fn update(&mut self, dt: f32, substeps: i32, grav: Vector2<f32>){
         self.update_quadtree();
-        if substeps > 1{
-            for _ in 0..substeps {
-                self.integrate_forces(dt / (substeps as f32), grav);
-                self.inter_particle_collisions();
-                self.apply_circular_constraint(500.0);
-            }
-        }else{
-            self.integrate_forces(dt, grav);
+        for _ in 0..substeps {
+            self.integrate_forces(dt / (substeps as f32), grav);
             self.inter_particle_collisions();
-            self.apply_circular_constraint(500.0);
+            self.apply_rect_constraint(self.boundary);
         }
     }
 }

@@ -2,10 +2,10 @@ use nalgebra::Vector2;
 
 #[derive(Clone, Copy)]
 pub struct Rect{
-    x:f32, //centered at (x, y), w distance from center to edge, h distance from center to edge
-    y:f32,
-    w:f32,
-    h:f32
+    pub(crate) x:f32, //centered at (x, y), w distance from center to edge, h distance from center to edge
+    pub(crate) y:f32,
+    pub(crate) w:f32,
+    pub(crate) h:f32
 }
 
 impl Rect {

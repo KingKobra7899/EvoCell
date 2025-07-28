@@ -2,18 +2,18 @@
 use nalgebra::Vector2;
 use std::time::Instant;
 use winit::{
-    application::ApplicationHandler,
-    event::{KeyEvent, WindowEvent},
+    event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
+    keyboard::{Key, NamedKey},
     window::{Window, WindowId},
+    application::{ApplicationHandler}
 };
 
 mod solver;
 mod gpu_renderer; // Import our new module
 
-const WIDTH: usize = 1000;
-const HEIGHT: usize = 1000;
+const WIDTH: usize = 1500;
+const HEIGHT: usize = 1500;
 
 struct App {
     window: Option<Window>,
@@ -21,6 +21,7 @@ struct App {
     physics_solver: solver::PhysicsSolver,
     frame_count: u32,
     last_fps_time: Instant,
+    paused: bool
 }
 
 impl App {
@@ -28,14 +29,55 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.add_particle_grid(40, 50, Vector2::new(200.0, 100.0), 7.0, 14.0, 1.0);
-
+        physics_solver.add_particle_grid(20, 35, Vector2::new(200.0, 500.0), 10.0, 20.0, 1.0, Vector2::new(0.0, 0.0));
+        physics_solver.add_particle_grid(10, 5, Vector2::new(1000.0,750.1), 10.0, 20.0, 1.0, Vector2::new(-10.0, 0.0));
         Self {
             window: None,
             gpu_renderer: None,
             physics_solver,
             frame_count: 0,
             last_fps_time: Instant::now(),
+            paused: true
+        }
+    }
+}
+
+fn handle_keyboard_input(event: KeyEvent, app: &mut App) {
+    if event.state == ElementState::Pressed && !event.repeat {
+        match event.logical_key {
+            Key::Named(NamedKey::Escape) => {
+                
+                println!("Escape key pressed!");
+            }
+            Key::Character(c) => {
+               
+            }
+            _ => {
+               
+            }
+        }
+    } else if event.state == ElementState::Released {
+        match event.logical_key {
+            Key::Named(NamedKey::Escape) => {
+                println!("Escape key released!");
+            }
+            Key::Named(NamedKey::Space) => {
+                app.paused = !app.paused;
+            }
+            Key::Named(NamedKey::ArrowRight) => {
+                if app.paused {
+                    app.physics_solver.update(0.0167, 1, Vector2::new(0.0, 0.0));
+                }else{
+                    app.paused = true;
+                    app.physics_solver.update(0.0167, 1, Vector2::new(0.0, 0.0));
+                }
+            }
+            Key::Character(c) => {
+                
+            }
+            _ => {
+               
+            }
         }
     }
 }
@@ -65,67 +107,60 @@ impl ApplicationHandler for App {
     ) {
         // Poll regularly to keep the simulation and rendering active
         event_loop.set_control_flow(ControlFlow::Poll);
-
+    
         match event {
             WindowEvent::CloseRequested => {
                 println!("Close requested. Exiting.");
                 event_loop.exit();
             }
-
-            WindowEvent::KeyboardInput {
-                event: KeyEvent {
-                    physical_key: PhysicalKey::Code(KeyCode::Escape),
-                    state,
-                    ..
-                },
-                ..
-            } => {
-                if state.is_pressed() {
-                    println!("Escape key pressed. Exiting.");
-                    event_loop.exit();
-                }
-            }
-
+    
             WindowEvent::RedrawRequested => {
-                // Update physics
-                self.physics_solver.update(0.03, 1, Vector2::new(0.0, 10.0)); // Gravity: (0, 10)
-
-                // Prepare particle data for GPU
+                if !self.paused {
+                    self.physics_solver.update(0.0167, 1, Vector2::new(0.0, 0.0)); // Gravity: (0, 10)
+                }
+    
                 let num_physics_particles = self.physics_solver.positions.len();
                 let mut gpu_particles: Vec<gpu_renderer::GpuParticle> = Vec::with_capacity(num_physics_particles);
                 for i in 0..num_physics_particles {
                     gpu_particles.push(gpu_renderer::GpuParticle {
-                        position: [self.physics_solver.positions[i].x, self.physics_solver.positions[i].y],
+                        position: [
+                            self.physics_solver.positions[i].x,
+                            self.physics_solver.positions[i].y,
+                        ],
                         radius: self.physics_solver.radii[i],
                         _padding: 0.0,
                     });
                 }
-
-                // Render the current state
+    
                 if let (Some(renderer), Some(window)) = (&mut self.gpu_renderer, &self.window) {
                     renderer.render(window, &gpu_particles, num_physics_particles as u32);
                 }
-
-                // FPS Calculation
+    
                 self.frame_count += 1;
                 let now = Instant::now();
                 if now.duration_since(self.last_fps_time).as_secs() >= 1 {
-                    let fps = self.frame_count as f64 / now.duration_since(self.last_fps_time).as_secs_f64();
+                    let fps = self.frame_count as f64
+                        / now.duration_since(self.last_fps_time).as_secs_f64();
                     println!("FPS: {:.1}", fps);
                     self.frame_count = 0;
                     self.last_fps_time = now;
                 }
             }
-            // Handle window resizing to update surface configuration
+    
             WindowEvent::Resized(physical_size) => {
                 if let Some(renderer) = &mut self.gpu_renderer {
                     renderer.resize(physical_size);
                 }
             }
-
+    
+            WindowEvent::KeyboardInput { event, .. } => {
+                handle_keyboard_input(event, self);
+            }
+    
             _ => {}
         }
     }
+    
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         // Request a redraw every frame to keep the simulation moving
