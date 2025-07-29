@@ -1,33 +1,40 @@
-use nalgebra::{matrix, Matrix};
-
+use nalgebra::{DMatrix};
 pub struct EnvironmentalEncoder{
-    pub(crate) weight_matrix: Matrix<f32>,
-    pub(crate) bias: Matrix<f32>,
+    pub(crate) weight_matrix: DMatrix<f32>,
+    pub(crate) bias: DMatrix<f32>,
 }
 
 impl EnvironmentalEncoder {
     pub fn new(input_size: usize, output_size: usize) -> Self {
-        let weight_matrix = matrix![0.0; output_size, input_size];
-        let bias = matrix![0.0; output_size, 1];
+        let weight_matrix = DMatrix::<f32>::zeros(output_size, input_size);
+        let bias = DMatrix::<f32>::zeros(output_size, 1);
         EnvironmentalEncoder { weight_matrix, bias }
     }
 
-    pub fn encode(&self, input: &Matrix<f32>) -> Matrix<f32> {
-        self.weight_matrix * input + &self.bias
+    pub fn with_weights(weight_matrix: DMatrix<f32>, bias: DMatrix<f32>) -> Self {
+        EnvironmentalEncoder { weight_matrix, bias }
+    }
+
+    pub fn encode(&self, input: &DMatrix<f32>) -> DMatrix<f32> {
+        &self.weight_matrix * input + &self.bias
     }
 }
 
 pub struct CognitiveDecoder {
-    pub(crate) weights: Matrix<f32>,
+    pub(crate) weights: DMatrix<f32>,
 }
 
 impl CognitiveDecoder {
     pub fn new(input_size: usize, output_size: usize) -> Self {
-        let weights: Matrix<f32, _, _, _> = matrix![0.0; output_size, input_size];
+        let weights = DMatrix::<f32>::zeros(output_size, input_size);
         CognitiveDecoder { weights }
     }
 
-    pub fn decode(&self, input: &Matrix<f32>) -> Matrix<f32> {
+    pub fn with_weights(weights: DMatrix<f32>) -> Self {
+        CognitiveDecoder { weights }
+    }
+
+    pub fn decode(&self, input: &DMatrix<f32>) -> f32 {
         self.weights.dot(input)
     }
 }

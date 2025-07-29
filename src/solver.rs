@@ -1,6 +1,7 @@
 use nalgebra::Vector2;
 mod quadtree;
 use quadtree::{QuadTree, Rect};
+mod cell;
 pub struct PhysicsSolver{
     pub positions: Vec<Vector2<f32>>,
     old_positions: Vec<Vector2<f32>>,
