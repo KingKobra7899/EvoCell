@@ -33,6 +33,81 @@ impl Rect {
         
         x_overlap && y_overlap
     }
+
+    pub fn intersects_cone(
+        &self,
+        cone_origin: Vector2<f32>,
+        direction: Vector2<f32>,
+        radius: f32,
+        angle: f32,
+    ) -> bool {
+        // Normalize the direction vector
+        let dir_norm = direction.normalize();
+
+        // Step 1: Check if cone origin is inside the rectangle
+        if self.point_is_in(cone_origin) {
+            return true;
+        }
+
+        // Step 2: Check if any rectangle corner is inside the cone
+        let corners = [
+            Vector2::new(self.x - self.w, self.y - self.h),
+            Vector2::new(self.x + self.w, self.y - self.h),
+            Vector2::new(self.x + self.w, self.y + self.h),
+            Vector2::new(self.x - self.w, self.y + self.h),
+        ];
+
+        for &corner in &corners {
+            if Self::point_in_cone(corner, cone_origin, dir_norm, radius, angle) {
+                return true;
+            }
+        }
+
+        // Step 3: Check if any point along the cone arc is inside the rectangle
+        let num_samples = 20;
+        for i in 0..=num_samples {
+            let a = -angle + (2.0 * angle * i as f32) / num_samples as f32;
+            let dir = rotate_vector(dir_norm, a);
+            let point_on_arc = cone_origin + dir * radius;
+            if self.point_is_in(point_on_arc) {
+                return true;
+            }
+        }
+
+        
+        false
+    }
+
+    fn point_in_cone(
+        point: Vector2<f32>,
+        origin: Vector2<f32>,
+        direction: Vector2<f32>,
+        radius: f32,
+        angle: f32,
+    ) -> bool {
+        let to_point = point - origin;
+        let distance = to_point.norm();
+
+        if distance > radius {
+            return false;
+        }
+
+        let to_point_normalized = to_point.normalize();
+        let dot = direction.dot(&to_point_normalized);
+        let theta = dot.acos(); 
+
+        theta <= angle
+    }
+}
+
+
+fn rotate_vector(v: Vector2<f32>, angle: f32) -> Vector2<f32> {
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+    Vector2::new(
+        v.x * cos_a - v.y * sin_a,
+        v.x * sin_a + v.y * cos_a,
+    )
 }
 
 pub struct QuadTree{
@@ -127,6 +202,34 @@ impl QuadTree{
         self.southeast = Some(Box::new(QuadTree::new(Rect::new(x + hw, y + hh, hw, hh), self.capacity)));
     }
     
+    pub fn query_cone(
+        &self,
+        cone_origin: Vector2<f32>,
+        direction: Vector2<f32>,
+        radius: f32,
+        angle: f32,
+    )->Vec<i32>{
+        let mut found: Vec<i32> = Vec::new();
+        if !self.boundary.intersects_cone(cone_origin, direction, radius, angle){
+            return found;
+        }
+
+        for i in 0..self.indices.len(){
+            if Rect::point_in_cone(self.points[i], cone_origin, direction, radius, angle){
+                found.push(self.indices[i]);
+            }
+        }
+
+        if(self.divided){
+            found.extend(self.northwest.as_ref().unwrap().query_cone(cone_origin, direction, radius, angle));
+            found.extend(self.northeast.as_ref().unwrap().query_cone(cone_origin, direction, radius, angle));
+            found.extend(self.southwest.as_ref().unwrap().query_cone(cone_origin, direction, radius, angle));
+            found.extend(self.southeast.as_ref().unwrap().query_cone(cone_origin, direction, radius, angle));
+        }
+
+        return found;
+    }
+
     pub fn query(&self, rect: &Rect)->Vec<i32>{
         let mut found: Vec<i32> = Vec::new();
         if !self.boundary.intersects(*rect){

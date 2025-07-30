@@ -2,7 +2,7 @@
 use nalgebra::Vector2;
 use std::time::Instant;
 use winit::{
-    event::{ElementState, Event, KeyEvent, WindowEvent},
+    event::{ElementState, MouseButton, KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::{Key, NamedKey},
     window::{Window, WindowId},
@@ -20,6 +20,7 @@ struct App {
     gpu_renderer: Option<gpu_renderer::GpuRenderer>,
     physics_solver: solver::PhysicsSolver,
     frame_count: u32,
+    mouse_pos: Vector2<f32>,
     last_fps_time: Instant,
     paused: bool
 }
@@ -29,10 +30,11 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.add_particle_grid(20, 35, Vector2::new(200.0, 500.0), 10.0, 20.0, 1.0, Vector2::new(0.0, 0.0));
-        physics_solver.add_particle_grid(10, 5, Vector2::new(1000.0,750.1), 10.0, 20.0, 1.0, Vector2::new(-10.0, 0.0));
+        physics_solver.add_particle_grid(20, 25, Vector2::new(200.0, 500.0), 10.0, 30.0, 1.0,true, Vector2::new(0.0, 0.0));
+        
         Self {
             window: None,
+            mouse_pos: Vector2::new(0.0,0.0),
             gpu_renderer: None,
             physics_solver,
             frame_count: 0,
@@ -72,8 +74,10 @@ fn handle_keyboard_input(event: KeyEvent, app: &mut App) {
                     app.physics_solver.update(0.0167, 1, Vector2::new(0.0, 0.0));
                 }
             }
+
+        
             Key::Character(c) => {
-                
+
             }
             _ => {
                
@@ -146,6 +150,15 @@ impl ApplicationHandler for App {
                     self.last_fps_time = now;
                 }
             }
+
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_pos = Vector2::new(position.x as f32, position.y as f32);
+            }
+
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+                self.physics_solver.add_particle(self.mouse_pos, 10.0, 10.0, Vector2::new(0.0, 0.0));
+            }
+            
     
             WindowEvent::Resized(physical_size) => {
                 if let Some(renderer) = &mut self.gpu_renderer {

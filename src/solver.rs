@@ -1,16 +1,21 @@
 use nalgebra::Vector2;
+use rand::{rng, rngs::ThreadRng, Rng};
 mod quadtree;
 use quadtree::{QuadTree, Rect};
 mod cell;
+use cell::Cell;
 pub struct PhysicsSolver{
     pub positions: Vec<Vector2<f32>>,
     old_positions: Vec<Vector2<f32>>,
     accelerations: Vec<Vector2<f32>>,
     masses: Vec<f32>,
+    cells: Vec<Cell>,
+    plants: Vec<usize>,
     pub radii: Vec<f32>,
     width: i32,
     height: i32,
     boundary: Rect,
+    rng: ThreadRng,
     qt: QuadTree,
     center: Vector2<f32>,
     pub num_particles: i32
@@ -18,9 +23,14 @@ pub struct PhysicsSolver{
 
 impl PhysicsSolver{
     pub fn new(width: i32, height: i32) -> PhysicsSolver{
-        return PhysicsSolver { positions: Vec::new(), old_positions: Vec::new(), 
-            accelerations: Vec::new(), masses: Vec::new(), radii: Vec::new(), 
-            width: width, height: height, num_particles: 0, 
+        return PhysicsSolver { positions: Vec::new(), rng: rand::rng(), old_positions: Vec::new(), 
+            accelerations: Vec::new(),
+            masses: Vec::new(), 
+            radii: Vec::new(), 
+            cells: Vec::new(), 
+            plants:  Vec::new(),
+            width: width, height: height, 
+            num_particles: 0, 
             boundary: Rect::new((width/2) as f32, (height/2) as f32, (width/2) as f32, (height/2) as f32),
             center: Vector2::new((width as f32) / 2.0, (height as f32) / 2.0),
             qt: QuadTree::new(Rect::new((width as f32) / 2.0, (height as f32) / 2.0, (width as f32) / 2.0, (height as f32) / 2.0), 5)}
@@ -34,16 +44,49 @@ impl PhysicsSolver{
         radius: f32,
         spacing: f32,
         mass: f32,
+        random_r: bool,
         vel: Vector2<f32>
     ) {
+        
         for y in 0..num_y {
             for x in 0..num_x {
                 let pos_x = start_pos.x + x as f32 * spacing;
                 let pos_y = start_pos.y + y as f32 * spacing;
-                self.add_particle(Vector2::new(pos_x, pos_y), mass, radius, vel);
+                if !random_r{
+                    self.add_particle(Vector2::new(pos_x, pos_y), mass, radius, vel);
+                }else{
+                    let random_mult: f32 = self.rng.random_range(0.75..1.25);
+                    self.add_particle(Vector2::new(pos_x, pos_y), mass * random_mult * random_mult, radius * random_mult, vel);
+                }
             }
         }
         
+    }
+
+    pub fn apply_newtonian_grav(&mut self, grav: f32){
+        for i in 0..(self.num_particles as usize){
+            let pos: Vector2<f32> = self.positions[i];
+            let r: f32 = self.radii[i];
+            let col_box = Rect::new(pos.x, pos.y, 10.0 * r, 10.0 * r);
+
+            let indices:Vec<i32>  = self.qt.query(&col_box);
+
+            for n in indices{
+                if n == (i as i32){
+                    continue;
+                }
+
+                let norm: Vector2<f32> = self.positions[i] - self.positions[n as usize];
+                let dist: f32 = norm.magnitude();
+
+                let grav_mag: f32 = (grav * self.masses[i] * self.masses[n as usize]) / (dist * dist);
+
+                let force: Vector2<f32> = (norm / dist) * (grav_mag);
+
+                self.accelerate_particle(i, -1.0 * force / 2.0);
+                self.accelerate_particle(n as usize, force / 2.0);
+            }
+        }
     }
 
     pub fn add_particle(&mut self, pos: Vector2<f32>, mass: f32, radius: f32, vel: Vector2<f32>){
@@ -55,6 +98,26 @@ impl PhysicsSolver{
         self.num_particles = self.num_particles + 1;
     }
     
+    pub fn add_cell(&mut self, pos: Vector2<f32>, mass: f32, radius: f32, vel: Vector2<f32>){
+        self.positions.push(pos);
+        self.old_positions.push(pos - vel);
+        self.accelerations.push(Vector2::new(0.0,0.0));
+        self.masses.push(mass);
+        self.radii.push(radius);
+        self.cells.push();
+        self.num_particles = self.num_particles + 1;
+    }
+
+    pub fn add_plant(&mut self, pos: Vector2<f32>, mass: f32, radius: f32, vel: Vector2<f32>){
+        self.positions.push(pos);
+        self.old_positions.push(pos - vel);
+        self.accelerations.push(Vector2::new(0.0,0.0));
+        self.masses.push(mass);
+        self.radii.push(radius);
+        self.plants.push(self.num_particles as usize);
+        self.num_particles = self.num_particles + 1;
+    }
+
     pub fn accelerate_particle(&mut self, index: usize, force: Vector2<f32>){
         self.accelerations[index] += force / self.masses[index];
     }
@@ -162,6 +225,7 @@ impl PhysicsSolver{
 
     pub fn update(&mut self, dt: f32, substeps: i32, grav: Vector2<f32>){
         self.update_quadtree();
+        self.apply_newtonian_grav(100000.0);
         for _ in 0..substeps {
             self.integrate_forces(dt / (substeps as f32), grav);
             self.inter_particle_collisions();
