@@ -1,3 +1,5 @@
+use core::num;
+
 use nalgebra::Vector2;
 use rand::{rng, rngs::ThreadRng, Rng};
 mod quadtree;
@@ -12,6 +14,7 @@ pub struct PhysicsSolver{
     cells: Vec<Cell>,
     plants: Vec<usize>,
     pub radii: Vec<f32>,
+    pub is_plant: Vec<bool>,
     width: i32,
     height: i32,
     boundary: Rect,
@@ -29,6 +32,7 @@ impl PhysicsSolver{
             radii: Vec::new(), 
             cells: Vec::new(), 
             plants:  Vec::new(),
+            is_plant: Vec::new(),
             width: width, height: height, 
             num_particles: 0, 
             boundary: Rect::new((width/2) as f32, (height/2) as f32, (width/2) as f32, (height/2) as f32),
@@ -104,7 +108,8 @@ impl PhysicsSolver{
         self.accelerations.push(Vector2::new(0.0,0.0));
         self.masses.push(mass);
         self.radii.push(radius);
-        self.cells.push();
+        self.cells.push(Cell::random(&mut self.rng, mass, self.num_particles as usize));
+        self.is_plant.push(false);
         self.num_particles = self.num_particles + 1;
     }
 
@@ -115,6 +120,7 @@ impl PhysicsSolver{
         self.masses.push(mass);
         self.radii.push(radius);
         self.plants.push(self.num_particles as usize);
+        self.is_plant.push(true);
         self.num_particles = self.num_particles + 1;
     }
 
@@ -221,11 +227,24 @@ impl PhysicsSolver{
             }
         }
     }
-    
+
+    pub fn init_world(&mut self, num_entities: i32, plant_ratio: f32){
+        
+        for i in 0..num_entities {
+            let pos: Vector2<f32> = Vector2::new(self.rng.random_range(0.0..(self.width as f32)), self.rng.random_range(0.0..(self.height as f32)));
+            let mass = self.rng.random_range(6.0..10.0);
+            
+            if self.rng.random_range(0.0..1.0) < plant_ratio {
+                self.add_plant(pos, mass, mass, Vector2::new(0.0, 0.0));
+            }else{
+                self.add_cell(pos, mass, mass, Vector2::new(0.0, 0.0));
+            }
+        }
+    }
 
     pub fn update(&mut self, dt: f32, substeps: i32, grav: Vector2<f32>){
         self.update_quadtree();
-        self.apply_newtonian_grav(100000.0);
+        
         for _ in 0..substeps {
             self.integrate_forces(dt / (substeps as f32), grav);
             self.inter_particle_collisions();

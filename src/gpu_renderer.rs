@@ -14,7 +14,8 @@ const HEIGHT: usize = 1000;
 pub struct GpuParticle {
     pub position: [f32; 2],
     pub radius: f32,
-    pub _padding: f32, // Pad to 16 bytes for alignment in storage buffers
+    pub is_plant: u32,
+
 }
 
 pub struct GpuRenderer {
@@ -97,7 +98,7 @@ impl GpuRenderer {
         // Initialize with a placeholder or empty vec. The main loop will populate it.
         // For the bind group to be valid, the buffer's initial size cannot be zero.
         // Provide at least one dummy particle.
-        let initial_particle_data: Vec<GpuParticle> = vec![GpuParticle { position: [0.0, 0.0], radius: 0.0, _padding: 0.0 }]; 
+        let initial_particle_data: Vec<GpuParticle> = vec![GpuParticle { position: [0.0, 0.0], radius: 0.0,is_plant:0}]; 
         let initial_particle_count = 0; // The count will be updated on the first render
 
         let particle_buffer = device.create_buffer_init(

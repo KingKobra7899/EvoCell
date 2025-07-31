@@ -30,7 +30,7 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.add_particle_grid(20, 25, Vector2::new(200.0, 500.0), 10.0, 30.0, 1.0,true, Vector2::new(0.0, 0.0));
+        physics_solver.init_world(1000, 0.1);
         
         Self {
             window: None,
@@ -132,7 +132,7 @@ impl ApplicationHandler for App {
                             self.physics_solver.positions[i].y,
                         ],
                         radius: self.physics_solver.radii[i],
-                        _padding: 0.0,
+                        is_plant: self.physics_solver.is_plant[i] as u32
                     });
                 }
     
@@ -156,7 +156,7 @@ impl ApplicationHandler for App {
             }
 
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
-                self.physics_solver.add_particle(self.mouse_pos, 10.0, 10.0, Vector2::new(0.0, 0.0));
+                self.physics_solver.add_cell(self.mouse_pos, 1.0, 10.0, Vector2::new(0.0, 0.0));
             }
             
     
