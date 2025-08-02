@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use nalgebra::{clamp, DMatrix, DVector, Vector2};
+use nalgebra::{clamp, DMatrix, DVector, Vector2, VectorN};
 use rand::{random_range, rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
 
@@ -234,19 +234,19 @@ impl Cell{
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
 
         // max of 20 creatures (encoded as the vec btwn them)
-        // 40: inputs (X, Y) TODO: how to handle missing?
+        // 60: inputs (X, Y, Type) TODO: how to handle missing?
         // 4: (activation of each decoder)
         // 1: caloric balance (desired - current)
         // 1: current metabolic rate
         // brain_size: brain_size (past activation)
 
         //final brain input size is 40 + 4 + 1 + 1 + brain_size
-        //46 + brain_size
+        //66 + brain_size
 
         Cell { index: index,
              brain_size: brain_size,
              current_energy: mass, 
-             state_encoder: EnvironmentalEncoder::random((46 + brain_size) as usize, brain_size as usize, rng), 
+             state_encoder: EnvironmentalEncoder::random((66 + brain_size) as usize, brain_size as usize, rng), 
              social_decoder: CognitiveDecoder::random(brain_size as usize, rng), 
              hunger_decoder: CognitiveDecoder::random(brain_size as usize, rng),  
              isolation_decoder: CognitiveDecoder::random(brain_size as usize, rng),  
@@ -364,5 +364,37 @@ impl Cell{
 
     }
 
+    pub fn encode_environment(&self, world: &PhysicsSolver, old_encoding: DMatrix<f32>, old_h: f32, old_soc: f32, old_iso: f32, old_gr: f32, caloric_deficit: f32, metabolic_rate: f32) -> DMatrix<f32> {
+        let pos:Vector2<f32> = world.positions[self.index];
+        let vel: Vector2<f32> = world.positions[self.index] - world.old_positions[self.index];
 
+        let point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
+
+        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 66) as usize, 1);
+
+
+        for (i, &idx) in point_idx.iter().enumerate() {
+            let other_pos = world.positions[idx as usize];
+            let dx = (pos.x - other_pos.x) / self.sight_r;
+            let dy = (pos.y - other_pos.y) / self.sight_r;
+
+            let base = i * 3;
+            full_env[(base, 0)]     = dx;
+            full_env[(base + 1, 0)] = dy;
+            full_env[(base + 2, 0)] = world.is_plant[idx as usize] as i32 as f32;
+        }
+        
+        full_env[60] = old_gr;
+        full_env[61] = old_h;
+        full_env[62] = old_iso;
+        full_env[63] = old_soc;
+        full_env[64] = caloric_deficit;
+        full_env[65] = metabolic_rate;
+
+        full_env
+            .view_mut((self.brain_size as usize, 0), (self.brain_size as usize, 1))
+            .copy_from(&old_encoding);
+        
+        self.state_encoder.encode(&full_env)
+    }
 }
