@@ -150,9 +150,7 @@ impl PhysicsSolver{
             self.positions[i] = new_pos;
             self.accelerations[i] = Vector2::new(0.0,0.0);
 
-            if self.masses[i] < 0.1 {
-                self.delete_particle(i);
-            }
+            
         }
     }
 
@@ -278,7 +276,7 @@ impl PhysicsSolver{
         self.num_particles -= 1;
     }
     pub fn init_world(&mut self, num_entities: usize, plant_ratio: f32){
-        let points = Poisson2D::new().with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 30.0).iter().take(num_entities);
+        let points = Poisson2D::new().with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 3.0).iter().take(num_entities);
         
         for point in points {
             let pos: Vector2<f32> = Vector2::new((point[0] + 10.0) as f32, (point[1] + 10.0) as f32);
@@ -294,7 +292,11 @@ impl PhysicsSolver{
 
     pub fn update(&mut self, dt: f32, substeps: i32, grav: Vector2<f32>){
         self.update_quadtree();
-        
+        let mut cells = std::mem::take(&mut self.cells); //move cells out so we can iterate and pass self in to them
+        for cell in &mut cells {
+            //cell.timestep(self);
+        }
+        self.cells = cells;
         for _ in 0..substeps {
             self.integrate_forces(dt / (substeps as f32), grav);
             self.inter_particle_collisions();
