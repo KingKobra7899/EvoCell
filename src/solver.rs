@@ -1,5 +1,5 @@
 use core::num;
-
+use fast_poisson::Poisson2D;
 use nalgebra::Vector2;
 use rand::{rng, rngs::ThreadRng, Rng};
 mod quadtree;
@@ -12,11 +12,14 @@ pub struct PhysicsSolver{
     accelerations: Vec<Vector2<f32>>,
     masses: Vec<f32>,
     cells: Vec<Cell>,
+    cell_indices: Vec<usize>,
     plants: Vec<usize>,
     pub radii: Vec<f32>,
     pub is_plant: Vec<bool>,
     width: i32,
     height: i32,
+    num_cells: i32,
+    num_plants: i32,
     boundary: Rect,
     rng: ThreadRng,
     qt: QuadTree,
@@ -31,10 +34,13 @@ impl PhysicsSolver{
             masses: Vec::new(), 
             radii: Vec::new(), 
             cells: Vec::new(), 
+            cell_indices: Vec::new(),
             plants:  Vec::new(),
             is_plant: Vec::new(),
             width: width, height: height, 
             num_particles: 0, 
+            num_cells: 0,
+            num_plants: 0,
             boundary: Rect::new((width/2) as f32, (height/2) as f32, (width/2) as f32, (height/2) as f32),
             center: Vector2::new((width as f32) / 2.0, (height as f32) / 2.0),
             qt: QuadTree::new(Rect::new((width as f32) / 2.0, (height as f32) / 2.0, (width as f32) / 2.0, (height as f32) / 2.0), 5)}
@@ -109,6 +115,8 @@ impl PhysicsSolver{
         self.masses.push(mass);
         self.radii.push(radius);
         self.cells.push(Cell::random(&mut self.rng, mass, self.num_particles as usize));
+        self.num_cells = self.num_cells + 1;
+        self.cell_indices.push(self.num_particles as usize);
         self.is_plant.push(false);
         self.num_particles = self.num_particles + 1;
     }
@@ -122,6 +130,7 @@ impl PhysicsSolver{
         self.plants.push(self.num_particles as usize);
         self.is_plant.push(true);
         self.num_particles = self.num_particles + 1;
+        self.num_plants = self.num_plants + 1;
     }
 
     pub fn accelerate_particle(&mut self, index: usize, force: Vector2<f32>){
@@ -140,6 +149,10 @@ impl PhysicsSolver{
             self.old_positions[i] = pos;
             self.positions[i] = new_pos;
             self.accelerations[i] = Vector2::new(0.0,0.0);
+
+            if self.masses[i] < 0.1 {
+                self.delete_particle(i);
+            }
         }
     }
 
@@ -228,10 +241,47 @@ impl PhysicsSolver{
         }
     }
 
-    pub fn init_world(&mut self, num_entities: i32, plant_ratio: f32){
+    pub fn delete_particle(&mut self, index: usize) {
+        if self.is_plant[index] {
+            self.num_plants -= 1;
+        } else {
+            self.num_cells -= 1;
+        }
+    
+        self.positions.remove(index);
+        self.accelerations.remove(index);
+        self.old_positions.remove(index);
+        self.radii.remove(index);
+        self.masses.remove(index);
+        self.is_plant.remove(index);
+    
+        for i in (0..self.cell_indices.len()).rev() {
+            let idx = self.cell_indices[i];
+            if idx == index {
+                self.cell_indices.remove(i);
+                self.cells.remove(i);
+            } else if idx > index {
+                self.cell_indices[i] = idx - 1;
+                self.cells[i].index = idx - 1;
+            }
+        }
+    
+        for i in (0..self.plants.len()).rev() {
+            let idx = self.plants[i];
+            if idx == index {
+                self.plants.remove(i);
+            } else if idx > index {
+                self.plants[i] = idx - 1;
+            }
+        }
+    
+        self.num_particles -= 1;
+    }
+    pub fn init_world(&mut self, num_entities: usize, plant_ratio: f32){
+        let points = Poisson2D::new().with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 30.0).iter().take(num_entities);
         
-        for i in 0..num_entities {
-            let pos: Vector2<f32> = Vector2::new(self.rng.random_range(0.0..(self.width as f32)), self.rng.random_range(0.0..(self.height as f32)));
+        for point in points {
+            let pos: Vector2<f32> = Vector2::new((point[0] + 10.0) as f32, (point[1] + 10.0) as f32);
             let mass = self.rng.random_range(6.0..10.0);
             
             if self.rng.random_range(0.0..1.0) < plant_ratio {

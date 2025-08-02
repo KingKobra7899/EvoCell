@@ -53,15 +53,20 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
             let norm = dist / p.radius;
             
             if (p.is_plant == 1u) {
-                // PLANT CELL - Simple green circle
-                let color = vec3<f32>(0.2, 0.8, 0.3);
+                // PLANT CELL – bright, saturated yellow-green
+                let base_color = vec3<f32>(0.1, 0.95, 0.2); // vivid green
+                let n = noise(p.position * 0.05 + pixel_coord * 0.03) * 0.1; // subtle organic variation
+                let color = base_color + vec3<f32>(n, n * 0.5, n); 
                 final_color += color;
-                
+
             } else {
-                // ANIMAL CELL - Simple blue circle
-                let color = vec3<f32>(0.3, 0.5, 0.9);
+                // ANIMAL CELL – deep saturated purple-blue
+                let base_color = vec3<f32>(0.25, 0.35, 1.0); // bright blue
+                let n = noise(p.position * 0.05 + pixel_coord * 0.03) * 0.1;
+                let color = base_color + vec3<f32>(n * 0.5, n, n * 1.5); 
                 final_color += color;
             }
+
         }
     }
     

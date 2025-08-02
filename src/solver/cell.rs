@@ -107,7 +107,7 @@ impl CognitiveDecoder {
     }
 }
 pub struct Cell{
-    index: usize,
+    pub(crate) index: usize,
     brain_size: i32,
     current_energy: f32,
     state_encoder: EnvironmentalEncoder,

@@ -30,7 +30,7 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.init_world(1000, 0.1);
+        physics_solver.init_world(1000, 0.5);
         
         Self {
             window: None,
