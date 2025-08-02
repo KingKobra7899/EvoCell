@@ -1,6 +1,7 @@
-// main.rs
 use nalgebra::Vector2;
 use std::time::Instant;
+use std::fs::OpenOptions;
+use std::io::Write;
 use winit::{
     event::{ElementState, MouseButton, KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -30,7 +31,7 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.init_world(1000, 0.5);
+        physics_solver.init_world(1000, 0.95);
         
         Self {
             window: None,
@@ -146,6 +147,25 @@ impl ApplicationHandler for App {
                     let fps = self.frame_count as f64
                         / now.duration_since(self.last_fps_time).as_secs_f64();
                     println!("FPS: {:.1}", fps);
+                     // Append num_cells and num_plants to CSV
+                    if let Ok(mut file) = OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open("simulation_data.csv")
+                    {
+                        // If the file is new (empty), write header
+                        if file.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
+                            let _ = writeln!(file, "time,num_cells,num_plants");
+                        }
+                        let time_elapsed = self.last_fps_time.elapsed().as_secs();
+                        let _ = writeln!(
+                            file,
+                            "{},{},{}",
+                            time_elapsed,
+                            self.physics_solver.num_cells,
+                            self.physics_solver.num_plants
+                        );
+                    }
                     self.frame_count = 0;
                     self.last_fps_time = now;
                 }

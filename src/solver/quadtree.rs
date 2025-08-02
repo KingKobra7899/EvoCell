@@ -208,26 +208,40 @@ impl QuadTree{
         direction: Vector2<f32>,
         radius: f32,
         angle: f32,
-    )->Vec<i32>{
+    ) -> Vec<i32> {
         let mut found: Vec<i32> = Vec::new();
-        if !self.boundary.intersects_cone(cone_origin, direction, radius, angle){
+    
+        if radius <= 0.0 || angle <= 0.0 {
+            return found; // invalid cone
+        }
+    
+        let dir_norm = if direction == Vector2::new(0.0, 0.0) {
+            // If direction is zero, use a default direction
+            // This could be any arbitrary direction, here we use (1, 0)
+            // This avoids division by zero in normalization
+            Vector2::new(1.0, 0.0)
+        } else {
+            direction.normalize()
+        };
+    
+        if !self.boundary.intersects_cone(cone_origin, dir_norm, radius, angle) {
             return found;
         }
-
-        for i in 0..self.indices.len(){
-            if Rect::point_in_cone(self.points[i], cone_origin, direction, radius, angle){
+    
+        for i in 0..self.indices.len() {
+            if Rect::point_in_cone(self.points[i], cone_origin, dir_norm, radius, angle) {
                 found.push(self.indices[i]);
             }
         }
-
-        if(self.divided){
-            found.extend(self.northwest.as_ref().unwrap().query_cone(cone_origin, direction, radius, angle));
-            found.extend(self.northeast.as_ref().unwrap().query_cone(cone_origin, direction, radius, angle));
-            found.extend(self.southwest.as_ref().unwrap().query_cone(cone_origin, direction, radius, angle));
-            found.extend(self.southeast.as_ref().unwrap().query_cone(cone_origin, direction, radius, angle));
+    
+        if self.divided {
+            found.extend(self.northwest.as_ref().unwrap().query_cone(cone_origin, dir_norm, radius, angle));
+            found.extend(self.northeast.as_ref().unwrap().query_cone(cone_origin, dir_norm, radius, angle));
+            found.extend(self.southwest.as_ref().unwrap().query_cone(cone_origin, dir_norm, radius, angle));
+            found.extend(self.southeast.as_ref().unwrap().query_cone(cone_origin, dir_norm, radius, angle));
         }
-
-        return found;
+    
+        found
     }
 
     pub fn query(&self, rect: &Rect)->Vec<i32>{
