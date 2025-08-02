@@ -258,7 +258,7 @@ impl Cell {
     }
 
     pub fn create_child(&self, world: &mut PhysicsSolver) {
-        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(1.0, 0.0);
+        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(world.radii[self.index], 0.0);
         let mut child_brain_size = self.brain_size;
         let mut child_mass = self.max_mass;
         let mut child_sight_r = self.sight_r;
@@ -355,7 +355,7 @@ impl Cell {
                 if is_plant || can_eat_animal {
                     let energy_gain = world.masses[idx as usize] * if is_plant { 5.0 } else { 10.0 };
                     self.current_energy += energy_gain;
-                    println!("Cell {} ate {} at distance {}", self.index, idx, distance);
+                    //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
                     
                     // Mark for deletion instead of deleting immediately
                     world.pending_deletions.push(idx as usize);

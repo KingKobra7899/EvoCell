@@ -159,7 +159,7 @@ impl PhysicsSolver {
     }
 
     pub fn integrate_forces(&mut self, dt: f32, grav: Vector2<f32>) {
-        let damping: f32 = 0.2; // damping coefficient (1/s)
+        let damping: f32 = 1.0; // damping coefficient (1/s)
     
         for i in 0..self.num_particles as usize {
             let pos = self.positions[i];
@@ -478,6 +478,12 @@ for index in deletions_to_process {
         }
     }
 
+    pub fn random_spawn_plant(&mut self) {
+        let pos: Vector2<f32> = Vector2::new(self.rng.random_range(0.0..self.width as f32), self.rng.random_range(0.0..self.height as f32));
+        let mass = self.rng.random_range(6.0..10.0);
+        self.add_plant(pos, mass, mass, Vector2::new(0.0, 0.0));
+    }
+
     pub fn update(&mut self, dt: f32, substeps: i32, grav: Vector2<f32>) {
         self.update_quadtree();
         
@@ -507,8 +513,8 @@ for index in deletions_to_process {
             self.apply_rect_constraint(self.boundary);
         }
 
-        if self.num_plants < 10 {
-            self.init_world(500, 1.0);
+        if self.rng.random_range(0.0..1.0) < 0.1 {
+            self.random_spawn_plant();
         }
     }
 }
