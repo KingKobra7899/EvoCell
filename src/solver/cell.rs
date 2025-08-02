@@ -1,8 +1,10 @@
 use std::f32::consts::PI;
 
-use nalgebra::{DMatrix, DVector};
-use rand::{rngs::ThreadRng, Rng};
+use nalgebra::{clamp, DMatrix, DVector, Vector2};
+use rand::{random_range, rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
+
+use crate::solver::PhysicsSolver;
 
 const MUTATION_RATE:f64 = 0.1;
 pub struct EnvironmentalEncoder{
@@ -15,6 +17,68 @@ impl EnvironmentalEncoder {
         let weight_matrix = DMatrix::<f32>::zeros(output_size, input_size);
         let bias = DMatrix::<f32>::zeros(output_size, 1);
         EnvironmentalEncoder { weight_matrix, bias }
+    }
+
+    pub fn add_neurons(&self, rng: &mut ThreadRng, new_neurons: usize) -> Self {
+        let normal = Normal::new(0.0, 1.0).unwrap();
+
+        // Create new weight rows for new neurons
+        let extra_weights = DMatrix::<f32>::from_fn(new_neurons, self.weight_matrix.ncols(), |_, _| {
+            normal.sample(rng)
+        });
+
+        // Create new bias entries for new neurons
+        let extra_bias = DMatrix::<f32>::from_fn(new_neurons, 1, |_, _| {
+            normal.sample(rng)
+        });
+
+        // Concatenate vertically (existing rows + new neurons)
+        let new_weight_matrix = DMatrix::from_rows(
+            &[
+                self.weight_matrix.row_iter().collect::<Vec<_>>(),
+                extra_weights.row_iter().collect::<Vec<_>>(),
+            ]
+            .concat(),
+        );
+
+        let new_bias = DMatrix::from_rows(
+            &[
+                self.bias.row_iter().collect::<Vec<_>>(),
+                extra_bias.row_iter().collect::<Vec<_>>(),
+            ]
+            .concat(),
+        );
+
+        EnvironmentalEncoder {
+            weight_matrix: new_weight_matrix,
+            bias: new_bias,
+        }
+    }
+
+    pub fn remove_neurons(&self, rng: &mut ThreadRng, num_remove: usize) -> Self {
+        let total = self.weight_matrix.nrows();
+        if num_remove >= total {
+            panic!("Cannot remove all neurons from EnvironmentalEncoder");
+        }
+
+        // Randomly choose indices to keep
+        let mut indices: Vec<usize> = (0..total).collect();
+        indices.shuffle(rng);
+        indices.truncate(total - num_remove);
+        indices.sort_unstable();
+
+        let new_weight_matrix = DMatrix::<f32>::from_rows(
+            &indices.iter().map(|&i| self.weight_matrix.row(i)).collect::<Vec<_>>(),
+        );
+
+        let new_bias = DMatrix::<f32>::from_rows(
+            &indices.iter().map(|&i| self.bias.row(i)).collect::<Vec<_>>(),
+        );
+
+        EnvironmentalEncoder {
+            weight_matrix: new_weight_matrix,
+            bias: new_bias,
+        }
     }
 
     pub fn random(input_size: usize, output_size: usize, rng: &mut ThreadRng) -> Self {
@@ -33,7 +97,7 @@ impl EnvironmentalEncoder {
     }
 
 
-    pub fn mutate(&self, rng: &mut ThreadRng){
+    pub fn mutate(&self, rng: &mut ThreadRng) -> Self{
         let normal = Normal::new(0.0, 0.1).unwrap();
         
         let new_weights: DMatrix<f32> = self.weight_matrix.map(|x| {
@@ -52,7 +116,7 @@ impl EnvironmentalEncoder {
             }
         });
 
-        EnvironmentalEncoder{weight_matrix: new_weights, bias: new_bias};
+        EnvironmentalEncoder{weight_matrix: new_weights, bias: new_bias}
     }
 
     pub fn with_weights(weight_matrix: DMatrix<f32>, bias: DMatrix<f32>) -> Self {
@@ -74,6 +138,25 @@ impl CognitiveDecoder {
         CognitiveDecoder { weights }
     }
 
+    pub fn remove_neurons(&self, rng: &mut ThreadRng, num_remove: usize) -> Self {
+        let total = self.weights.len();
+        if num_remove >= total {
+            panic!("Cannot remove all neurons from CognitiveDecoder");
+        }
+
+        let mut indices: Vec<usize> = (0..total).collect();
+        indices.shuffle(rng);
+        indices.truncate(total - num_remove);
+        indices.sort_unstable();
+
+        let new_weights = DVector::<f32>::from_iterator(
+            indices.len(),
+            indices.iter().map(|&i| self.weights[i]),
+        );
+
+        CognitiveDecoder { weights: new_weights }
+    }
+
     pub fn with_weights(weights: DVector<f32>) -> Self {
         CognitiveDecoder { weights }
     }
@@ -86,6 +169,22 @@ impl CognitiveDecoder {
         });
 
         CognitiveDecoder { weights }
+    }
+
+    pub fn add_neurons(&self, rng: &mut ThreadRng, new_neurons: usize) -> Self {
+        let normal = Normal::new(0.0, 1.0).unwrap();
+
+        // Create new weights for new neurons
+        let extra_weights = DVector::<f32>::from_fn(new_neurons, |_, _| {
+            normal.sample(rng)
+        });
+
+        // Concatenate the vectors
+        let mut combined = DVector::<f32>::zeros(self.weights.len() + new_neurons);
+        combined.rows_mut(0, self.weights.len()).copy_from(&self.weights);
+        combined.rows_mut(self.weights.len(), new_neurons).copy_from(&extra_weights);
+
+        CognitiveDecoder { weights: combined }
     }
 
     pub fn mutate(&self, rng: &mut ThreadRng) -> Self {
@@ -135,11 +234,11 @@ impl Cell{
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
 
         // max of 20 creatures (encoded as the vec btwn them)
-        // 40 inputs
-        // 4 (activation of each decoder)
-        // caloric balance (desired - current)
-        // current metabolic rate
-        // brain_size (past activation)
+        // 40: inputs (X, Y) TODO: how to handle missing?
+        // 4: (activation of each decoder)
+        // 1: caloric balance (desired - current)
+        // 1: current metabolic rate
+        // brain_size: brain_size (past activation)
 
         //final brain input size is 40 + 4 + 1 + 1 + brain_size
         //46 + brain_size
@@ -159,6 +258,110 @@ impl Cell{
              desired_energy: mass,
              predation: predation_dist.sample(rng)
             }
+    }
+
+    pub fn create_child(&self, world: &mut PhysicsSolver){
+        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(1.0, 0.0);
+        let mut child_brain_size = self.brain_size;
+        let mut child_mass = self.max_mass;
+        let mut child_sight_r = self.sight_r;
+        let mut child_sight_a = self.sight_a;
+        let mut child_pred = self.predation;
+        let mut brain_delta: i32 = 0;
+
+        if world.rng.random_range(0.0..1.0) < (MUTATION_RATE / 2.0) {
+            brain_delta = world.rng.random_range(-1..1);
+            child_brain_size += brain_delta;
+        }
+
+        if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
+            child_mass += world.rng.random_range(-1..1) as f32;
+        }
+
+        if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
+            child_sight_r += world.rng.random_range(-1..1) as f32;
+        }
+
+        if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
+            child_sight_a += world.rng.random_range(-0.05..0.05) as f32;
+            child_sight_a = clamp(child_sight_a, 0.0, PI / 2.0);
+        }
+
+        if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
+            child_pred += world.rng.random_range(-0.05..0.05) as f32;
+        }
+
+        world.positions.push(child_pos);
+        world.old_positions.push(child_pos);
+        world.accelerations.push(Vector2::new(0.0,0.0));
+        world.masses.push(child_mass);
+        world.radii.push(child_mass);
+        
+        world.is_plant.push(false);
+        world.num_particles = world.num_particles + 1;
+        world.num_cells = world.num_cells + 1;
+
+        if brain_delta == 0{
+            world.cells.push(Cell { index: world.num_particles as usize,
+                brain_size: child_brain_size,
+                current_energy: child_mass, 
+                state_encoder: self.state_encoder.mutate(&mut world.rng), 
+                social_decoder: self.social_decoder.mutate(&mut world.rng), 
+                hunger_decoder: self.hunger_decoder.mutate(&mut world.rng),  
+                isolation_decoder: self.isolation_decoder.mutate(&mut world.rng),
+                gr_decoder: self.gr_decoder.mutate(&mut world.rng),
+                current_mass: child_mass / 2.0, 
+                max_mass: child_mass, 
+                sight_r: child_sight_r, 
+                sight_a: child_sight_a, 
+                desired_energy: child_mass,
+                predation: child_pred
+               })
+        }else if brain_delta > 0 {
+            let child_se = self.state_encoder.add_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            let child_sd = self.social_decoder.add_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            let child_hd = self.hunger_decoder.add_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            let child_id = self.isolation_decoder.add_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            let child_gd = self.gr_decoder.add_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            world.cells.push(Cell { index: world.num_particles as usize,
+                brain_size: child_brain_size,
+                current_energy: child_mass, 
+                state_encoder: child_se, 
+                social_decoder: child_sd, 
+                hunger_decoder: child_hd,  
+                isolation_decoder: child_id,
+                gr_decoder: child_gd,
+                current_mass: child_mass / 2.0, 
+                max_mass: child_mass, 
+                sight_r: child_sight_r, 
+                sight_a: child_sight_a, 
+                desired_energy: child_mass,
+                predation: child_pred
+               })
+        }else {
+            brain_delta = brain_delta * -1;
+            let child_se = self.state_encoder.remove_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            let child_sd = self.social_decoder.remove_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            let child_hd = self.hunger_decoder.remove_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            let child_id = self.isolation_decoder.remove_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            let child_gd = self.gr_decoder.remove_neurons(&mut world.rng, brain_delta as usize).mutate(&mut world.rng);
+            world.cells.push(Cell { index: world.num_particles as usize,
+                brain_size: child_brain_size,
+                current_energy: child_mass, 
+                state_encoder: child_se, 
+                social_decoder: child_sd, 
+                hunger_decoder: child_hd,  
+                isolation_decoder: child_id,
+                gr_decoder: child_gd,
+                current_mass: child_mass / 2.0, 
+                max_mass: child_mass, 
+                sight_r: child_sight_r, 
+                sight_a: child_sight_a, 
+                desired_energy: child_mass,
+                predation: child_pred
+               })
+        }
+
     }
 
 
