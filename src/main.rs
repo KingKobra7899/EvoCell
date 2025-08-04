@@ -31,7 +31,7 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.init_world(1000, 0.95);
+        physics_solver.init_world(2000, 0.9);
         
         Self {
             window: None,
@@ -69,13 +69,12 @@ fn handle_keyboard_input(event: KeyEvent, app: &mut App) {
             }
             Key::Named(NamedKey::ArrowRight) => {
                 if app.paused {
-                    app.physics_solver.update(0.0167, 1, Vector2::new(0.0, 0.0));
+                    app.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
                 }else{
                     app.paused = true;
-                    app.physics_solver.update(0.0167, 1, Vector2::new(0.0, 0.0));
+                    app.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
                 }
             }
-
         
             Key::Character(c) => {
 
@@ -121,7 +120,7 @@ impl ApplicationHandler for App {
     
             WindowEvent::RedrawRequested => {
                 if !self.paused {
-                    self.physics_solver.update(0.0167, 1, Vector2::new(0.0, 0.0)); // Gravity: (0, 10)
+                    self.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0)); // Gravity: (0, 10)
                 }
     
                 let num_physics_particles = self.physics_solver.positions.len();
@@ -155,19 +154,26 @@ impl ApplicationHandler for App {
                     {
                         // If the file is new (empty), write header
                         if file.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
-                            let _ = writeln!(file, "time,num_cells,num_plants");
+                            let _ = writeln!(file, "time,num_cells,num_plants,avg_speed,avg_brain_size,avg_hunger,avg_isolation,avg_social,avg_sight_r");
                         }
                         let time_elapsed = self.last_fps_time.elapsed().as_secs();
                         let _ = writeln!(
                             file,
-                            "{},{},{}",
+                            "{},{},{},{},{},{},{},{},{}",
                             time_elapsed,
                             self.physics_solver.num_cells,
-                            self.physics_solver.num_plants
+                            self.physics_solver.num_plants,
+                            self.physics_solver.avg_speed,
+                            self.physics_solver.avg_brain_size,
+                            self.physics_solver.avg_hunger,
+                            self.physics_solver.avg_isolation,
+                            self.physics_solver.avg_social,
+                            self.physics_solver.avg_sight_r
                         );
                     }
                     self.frame_count = 0;
                     self.last_fps_time = now;
+                    self.physics_solver.reset_avgs(); // Reset averages for next frame
                 }
             }
 
@@ -208,4 +214,5 @@ fn main() {
     let mut app = App::new();
 
     event_loop.run_app(&mut app).expect("EventLoop run failed");
+    app.physics_solver.save_random_creature(); // Save a random creature's brain at the end
 }

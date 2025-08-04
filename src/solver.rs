@@ -2,7 +2,7 @@
 use core::num;
 use fast_poisson::Poisson2D;
 use nalgebra::Vector2;
-use rand::{rng, rngs::ThreadRng, Rng};
+use rand::{rng, rngs::ThreadRng, seq::index, Rng};
 mod quadtree;
 use quadtree::{QuadTree, Rect};
 mod cell;
@@ -26,6 +26,12 @@ pub struct PhysicsSolver {
     pub rng: ThreadRng,
     pub qt: QuadTree,
     center: Vector2<f32>,
+    pub avg_speed: f32,
+    pub avg_brain_size: f32,
+    pub avg_hunger: f32,
+    pub avg_isolation: f32,
+    pub avg_social: f32,
+    pub avg_sight_r: f32,
     pub num_particles: i32,
     pub pending_deletions: Vec<usize>, // New field for deferred deletions
     pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
@@ -41,6 +47,12 @@ impl PhysicsSolver {
             masses: Vec::new(),
             radii: Vec::new(),
             cells: Vec::new(),
+            avg_speed: 0.0,
+            avg_brain_size: 0.0,
+            avg_hunger: 0.0,
+            avg_isolation: 0.0,
+            avg_social: 0.0,
+            avg_sight_r: 0.0,
             cell_indices: Vec::new(),
             plants: Vec::new(),
             is_plant: Vec::new(),
@@ -55,6 +67,14 @@ impl PhysicsSolver {
             pending_deletions: Vec::new(),
             pending_additions: Vec::new(),
         }
+    }
+    pub fn reset_avgs(&mut self) {
+        self.avg_speed = 0.0;
+        self.avg_brain_size = 0.0;
+        self.avg_hunger = 0.0;
+        self.avg_isolation = 0.0;
+        self.avg_social = 0.0;
+        self.avg_sight_r = 0.0;
     }
 
     pub fn add_particle_grid(
@@ -159,17 +179,17 @@ impl PhysicsSolver {
     }
 
     pub fn integrate_forces(&mut self, dt: f32, grav: Vector2<f32>) {
-        let damping: f32 = 1.0; // damping coefficient (1/s)
+        
     
         for i in 0..self.num_particles as usize {
             let pos = self.positions[i];
             let old_pos = self.old_positions[i];
     
             // Velocity from previous positions
-            let velocity = (pos - old_pos) / dt;
-    
+            let mut velocity = (pos - old_pos) / dt;
+            velocity *= 0.15;
             // Acceleration = existing acceleration + gravity - damping * velocity
-            let acc = self.accelerations[i] + grav - velocity * damping;
+            let acc = self.accelerations[i] + grav - velocity;
     
             // Verlet integration
             let new_pos = pos + (pos - old_pos) + acc * dt * dt;
@@ -182,7 +202,7 @@ impl PhysicsSolver {
             self.accelerations[i] = Vector2::new(0.0, 0.0);
     
             // Radius based on mass (only if mass changes)
-            self.radii[i] = 5.0 * self.masses[i].sqrt() * 0.5;
+            self.radii[i] = f32::max(5.0 * self.masses[i].sqrt() * 0.5, 5.0);
         }
     }
     
@@ -357,7 +377,7 @@ for index in deletions_to_process {
             self.positions.push(child_pos);
             self.old_positions.push(child_pos);
             self.accelerations.push(Vector2::new(0.0, 0.0));
-            self.masses.push(child_mass);
+            self.masses.push(child_mass * 0.25);
             self.radii.push(child_mass);
             self.is_plant.push(false);
             self.num_particles += 1;
@@ -374,7 +394,7 @@ for index in deletions_to_process {
                     hunger_decoder: parent_cell.hunger_decoder.mutate(&mut self.rng),
                     isolation_decoder: parent_cell.isolation_decoder.mutate(&mut self.rng),
                     metabolic_rate: 0.0,
-                    current_mass: child_mass / 2.0,
+                    current_mass: child_mass / 4.0,
                     max_mass: child_mass,
                     max_speed: child_max_speed,
                     old_h: 0.0,
@@ -513,8 +533,18 @@ for index in deletions_to_process {
             self.apply_rect_constraint(self.boundary);
         }
 
-        if self.rng.random_range(0.0..1.0) < 0.1 {
+        if self.rng.random_range(0.0..1.0) < sigmoid(38.97382 / self.num_plants as f32) && self.num_cells > 0 {
             self.random_spawn_plant();
         }
     }
+
+    pub fn save_random_creature(&mut self) {
+        let mut index = self.rng.random_range(0..self.num_cells as usize);
+        let cell = &self.cells[index];
+        cell.save_brain_to_file("brain.json").expect("Failed to save brain");
+    }
+}
+
+pub fn sigmoid(x: f32) -> f32 {
+    1.0 / (1.0 + (-x).exp())
 }

@@ -4,10 +4,26 @@ use std::f32::consts::PI;
 use nalgebra::{clamp, DMatrix, DVector, Vector2, VectorN};
 use rand::{random_range, rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
-
+use nalgebra_glm as glm;
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.1;
+const MUTATION_RATE: f64 = 0.001;
+
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize)]
+struct BrainExport {
+    brain_size: i32,
+    encoder_weights: Vec<f32>,
+    encoder_bias: Vec<f32>,
+    social_weights: Vec<f32>,
+    hunger_weights: Vec<f32>,
+    isolation_weights: Vec<f32>,
+    sight_r: f32,
+    sight_a: f32,
+    predation: f32,
+    max_speed: f32
+}
 
 pub struct EnvironmentalEncoder {
     pub(crate) weight_matrix: DMatrix<f32>,
@@ -120,7 +136,7 @@ impl EnvironmentalEncoder {
     }
 
     pub fn encode(&self, input: &DMatrix<f32>) -> DMatrix<f32> {
-        &self.weight_matrix * input + &self.bias
+        DMatrix::map(&(self.weight_matrix.clone() * input + &self.bias), |x| x.tanh())
     }
 }
 
@@ -196,7 +212,7 @@ impl CognitiveDecoder {
     }
 
     pub fn decode(&self, input: &DVector<f32>) -> f32 {
-        self.weights.dot(input)
+        f32::tanh(self.weights.dot(input)) + 1.0 // Ensure output is positive
     }
 }
 
@@ -225,13 +241,13 @@ pub struct Cell {
 
 impl Cell {
     pub fn random(rng: &mut ThreadRng, mass: f32, index: usize) -> Self {
-        let sight_r_dist: Normal<f32> = Normal::new(50.0, 5.0).unwrap();
+        let sight_r_dist: Normal<f32> = Normal::new(50.0, 10.0).unwrap();
         let sight_angle_dist: Normal<f32> = Normal::new(PI / 4.0, PI / 12.0).unwrap();
         let brain_size_dist: Normal<f32> = Normal::new(9.0, 2.0).unwrap();
-        let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
+        let predation_dist: Normal<f32> = Normal::new(0.1, 0.01).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
-        let max_speed = rng.random_range(40.0..50.0);
+        let max_speed = rng.random_range(0.25..0.5);
 
         Cell {
             index,
@@ -252,13 +268,13 @@ impl Cell {
             sight_r: sight_r_dist.sample(rng),
             sight_a: sight_angle_dist.sample(rng),
             desired_energy: mass,
-            predation: 0.0,
+            predation: predation_dist.sample(rng),
             to_delete: false,
         }
     }
 
     pub fn create_child(&self, world: &mut PhysicsSolver) {
-        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(world.radii[self.index], 0.0);
+        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(world.radii[self.index] * 3.5, 0.0);
         let mut child_brain_size = self.brain_size;
         let mut child_mass = self.max_mass;
         let mut child_sight_r = self.sight_r;
@@ -272,10 +288,10 @@ impl Cell {
             child_brain_size += brain_delta;
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_mass += world.rng.random_range(-1..1) as f32;
+            child_mass += clamp(world.rng.random_range(-1..1) as f32, 5.0, 100.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_sight_r += world.rng.random_range(-1..1) as f32;
+            child_sight_r += world.rng.random_range(-0.1..0.1) as f32;
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
             child_sight_a += world.rng.random_range(-0.05..0.05) as f32;
@@ -290,7 +306,7 @@ impl Cell {
         }
 
         // Add child to pending additions instead of directly adding
-        world.pending_additions.push((child_pos, child_mass, brain_delta, child_brain_size, child_sight_r, child_sight_a, child_pred, child_max_speed, self.clone()));
+        world.pending_additions.push((child_pos, child_mass, brain_delta, child_brain_size, clamp(child_sight_r,0.0, 100.0), child_sight_a, child_pred, child_max_speed, self.clone()));
     }
 
     pub fn encode_environment(&self, world: &PhysicsSolver) -> DMatrix<f32> {
@@ -320,6 +336,12 @@ impl Cell {
         full_env
             .view_mut((self.brain_size as usize, 0), (self.brain_size as usize, 1))
             .copy_from(&self.old_encoding);
+
+        for val in full_env.iter_mut() {
+            if !val.is_finite() {
+                *val = 0.0;
+            }
+        }
 
         self.state_encoder.encode(&full_env)
     }
@@ -405,11 +427,11 @@ impl Cell {
         let social_vector = mean_social_point - pos;
         let isolation_vector = social_vector * -1.0;
 
-        let hunger_vel = safe_normalize(hunger_vector) * self.max_speed;
-        let social_vel = safe_normalize(social_vector) * self.max_speed;
-        let isolation_vel = safe_normalize(isolation_vector) * self.max_speed;
+        let hunger_vel = if hunger_vector.magnitude() > self.max_speed { safe_normalize(hunger_vector) * self.max_speed } else { hunger_vector };
+        let social_vel = if social_vector.magnitude() > self.max_speed { safe_normalize(social_vector) * self.max_speed } else { social_vector };
+        let isolation_vel = if isolation_vector.magnitude() > self.max_speed { safe_normalize(isolation_vector) * self.max_speed } else { isolation_vector };
 
-        let max_motivation = self.old_h + self.old_iso + self.old_soc;
+        let max_motivation = self.old_h + self.old_soc + self.old_iso;
         let (hunger_motivation, social_motivation, isolation_motivation) =
             if max_motivation.abs() > f32::EPSILON {
                 (
@@ -418,45 +440,103 @@ impl Cell {
                     self.old_iso / max_motivation,
                 )
             } else {
-                (0.0, 0.0, 0.0)
+                // Equal probability when all motivations are zero
+                (1.0/3.0, 1.0/3.0, 1.0/3.0)
             };
 
-        let acc = hunger_vel * hunger_motivation
-            + social_vel * social_motivation
-            + isolation_vel * isolation_motivation;
+            
+            let mut movement = hunger_vel * hunger_motivation
+                + social_vel * social_motivation
+                + isolation_vel * isolation_motivation;
 
-        let acc = safe_normalize(acc) * self.max_speed;
-        world.accelerate_particle(self.index, acc / 0.0167);
+            if movement.x.is_nan() || movement.y.is_nan() {
+                
+                
+                // Random direction in radians
+                let angle = world.rng.random_range(0.0..std::f32::consts::TAU);
+                
+                // Random speed <= max_speed
+                let speed = world.rng.random_range(0.0..=self.max_speed);
 
-        // Metabolic calculations
-        self.metabolic_rate = f32::powf(self.current_mass, 0.75)
-            + f32::powf(self.brain_size as f32, 0.86)
-            + f32::powf(self.current_mass, 0.7) * acc.magnitude() / 10000.0;
-        self.current_energy -= self.metabolic_rate * 0.0167;
-
-        // Energy/mass adjustments
-        if self.current_energy <= self.desired_energy {
-            self.current_energy += self.current_mass * 0.01;
-            self.current_mass -= self.current_mass * 0.01;
-        } else if self.current_energy > self.desired_energy {
-            self.current_mass += self.current_mass * 0.01;
-            self.current_energy -= self.current_mass * 0.01;
-            if self.current_mass > self.max_mass {
-                self.current_mass = self.max_mass;
-                self.create_child(world);
-                self.current_mass = self.max_mass * 0.25;
+                movement = Vector2::new(angle.cos(), angle.sin()) * speed;
             }
+
+            world.positions[self.index] += movement;
+
+        // ----- Metabolic calculations -----
+        let basal_cost = 0.02 * f32::powf(self.current_mass, 0.75); // Kleiber's law
+        let brain_cost = 0.025* f32::powf(self.brain_size as f32, 0.86);
+        let move_cost = 0.01 * self.current_mass * movement.magnitude().powi(2); // cost grows quadratically with acceleration
+       
+        self.metabolic_rate = basal_cost + brain_cost + move_cost;
+        self.current_energy -= self.metabolic_rate;
+
+        // ----- Energy ↔ Mass exchange -----
+        let starvation_threshold = self.desired_energy * 0.5;
+        if self.current_energy < starvation_threshold {
+            // Burn mass for energy
+            let mass_loss = 0.002 * self.current_mass;
+            self.current_mass -= mass_loss;
+            self.current_energy += mass_loss * 20.0; // conversion rate from mass to energy
+        } else {
+            // Store surplus energy as mass
+            let storage = 0.001 * self.current_energy;
+            self.current_mass += storage;
+            self.current_energy -= storage;
         }
 
-        // Check for death
-        if self.current_energy <= 0.0 || self.current_mass <= 0.1 {
+        // Cap mass within bounds
+        if self.current_mass > self.max_mass {
+            self.current_mass = self.max_mass;
+            self.create_child(world);
+            self.current_energy *= 0.5; // post-reproduction energy loss
+            self.current_mass *= 0.5; // post-reproduction weight loss
+        }
+        
+        world.masses[self.index] = self.current_mass;
+        world.avg_speed += self.max_speed / world.num_cells as f32;
+        world.avg_brain_size += self.brain_size as f32 / world.num_cells as f32;
+        world.avg_hunger +=if self.old_h.is_finite() {self.old_h / world.num_cells as f32} else {0.0};
+        world.avg_isolation += if self.old_iso.is_finite() {self.old_iso /world.num_cells as f32} else {0.0};
+        world.avg_social += if self.old_soc.is_finite() {self.old_soc / world.num_cells as f32} else {0.0};
+        world.avg_sight_r += self.sight_r / world.num_cells as f32;
+
+
+        // ----- Death conditions -----
+        let min_mass_for_survival = 0.05; // scaleable for realism
+        if self.current_energy <= 0.0 || self.current_mass <= min_mass_for_survival || world.positions[self.index].x.is_nan() || world.positions[self.index].y.is_nan() {
             self.to_delete = true;
             return;
         }
 
-        if self.index == 0 {
-            println!("Cell {}: Energy: {}, Mass: {}, Metabolic Rate: {}", self.index, self.current_energy, self.current_mass, self.metabolic_rate);
+    }
+    pub fn export_brain(&self) -> BrainExport {
+        BrainExport {
+            brain_size: self.brain_size,
+            encoder_weights: self.state_encoder.weight_matrix.as_slice().to_vec(),
+            encoder_bias: self.state_encoder.bias.as_slice().to_vec(),
+            social_weights: self.social_decoder.weights.as_slice().to_vec(),
+            hunger_weights: self.hunger_decoder.weights.as_slice().to_vec(),
+            isolation_weights: self.isolation_decoder.weights.as_slice().to_vec(),
+            sight_r: self.sight_r,
+            sight_a: self.sight_a,
+            predation: self.predation,
+            max_speed: self.max_speed,
         }
+    }
+
+    /// Export brain to JSON string
+    pub fn export_brain_json(&self) -> Result<String, serde_json::Error> {
+        let brain_export = self.export_brain();
+        serde_json::to_string_pretty(&brain_export)
+    }
+
+    /// Save brain to file
+    pub fn save_brain_to_file(&self, filename: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let json = self.export_brain_json()?;
+        let mut file = std::fs::File::create(filename)?;
+        std::io::Write::write_all(&mut file, json.as_bytes())?;
+        Ok(())
     }
 }
 

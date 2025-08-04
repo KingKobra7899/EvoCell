@@ -36,78 +36,20 @@ impl Rect {
 
     pub fn intersects_cone(
         &self,
-        cone_origin: Vector2<f32>,
-        direction: Vector2<f32>,
+        center: Vector2<f32>,
+        _direction: Vector2<f32>, // unused
         radius: f32,
-        angle: f32,
+        _angle: f32,              // unused
     ) -> bool {
-        // Normalize the direction vector
-        let dir_norm = direction.normalize();
+        // Clamp circle center to the rectangle bounds
+        let closest_x = center.x.clamp(self.x - self.w, self.x + self.w);
+        let closest_y = center.y.clamp(self.y - self.h, self.y + self.h);
 
-        // Step 1: Check if cone origin is inside the rectangle
-        if self.point_is_in(cone_origin) {
-            return true;
-        }
+        let dx = center.x - closest_x;
+        let dy = center.y - closest_y;
 
-        // Step 2: Check if any rectangle corner is inside the cone
-        let corners = [
-            Vector2::new(self.x - self.w, self.y - self.h),
-            Vector2::new(self.x + self.w, self.y - self.h),
-            Vector2::new(self.x + self.w, self.y + self.h),
-            Vector2::new(self.x - self.w, self.y + self.h),
-        ];
-
-        for &corner in &corners {
-            if Self::point_in_cone(corner, cone_origin, dir_norm, radius, angle) {
-                return true;
-            }
-        }
-
-        // Step 3: Check if any point along the cone arc is inside the rectangle
-        let num_samples = 20;
-        for i in 0..=num_samples {
-            let a = -angle + (2.0 * angle * i as f32) / num_samples as f32;
-            let dir = rotate_vector(dir_norm, a);
-            let point_on_arc = cone_origin + dir * radius;
-            if self.point_is_in(point_on_arc) {
-                return true;
-            }
-        }
-
-        
-        false
+        (dx * dx + dy * dy) <= radius * radius
     }
-
-    fn point_in_cone(
-        point: Vector2<f32>,
-        origin: Vector2<f32>,
-        direction: Vector2<f32>,
-        radius: f32,
-        angle: f32,
-    ) -> bool {
-        let to_point = point - origin;
-        let distance = to_point.norm();
-
-        if distance > radius {
-            return false;
-        }
-
-        let to_point_normalized = to_point.normalize();
-        let dot = direction.dot(&to_point_normalized);
-        let theta = dot.acos(); 
-
-        theta <= angle
-    }
-}
-
-
-fn rotate_vector(v: Vector2<f32>, angle: f32) -> Vector2<f32> {
-    let cos_a = angle.cos();
-    let sin_a = angle.sin();
-    Vector2::new(
-        v.x * cos_a - v.y * sin_a,
-        v.x * sin_a + v.y * cos_a,
-    )
 }
 
 pub struct QuadTree{
@@ -204,43 +146,34 @@ impl QuadTree{
     
     pub fn query_cone(
         &self,
-        cone_origin: Vector2<f32>,
-        direction: Vector2<f32>,
+        center: Vector2<f32>,
+        _direction: Vector2<f32>, // unused
         radius: f32,
-        angle: f32,
+        _angle: f32,               // unused
     ) -> Vec<i32> {
-        let mut found: Vec<i32> = Vec::new();
-    
-        if radius <= 0.0 || angle <= 0.0 {
-            return found; // invalid cone
+        let mut found = Vec::new();
+
+        if radius <= 0.0 {
+            return found; // invalid circle
         }
-    
-        let dir_norm = if direction == Vector2::new(0.0, 0.0) {
-            // If direction is zero, use a default direction
-            // This could be any arbitrary direction, here we use (1, 0)
-            // This avoids division by zero in normalization
-            Vector2::new(1.0, 0.0)
-        } else {
-            direction.normalize()
-        };
-    
-        if !self.boundary.intersects_cone(cone_origin, dir_norm, radius, angle) {
+
+        if !self.boundary.intersects_cone(center, _direction, radius, _angle) {
             return found;
         }
-    
+
         for i in 0..self.indices.len() {
-            if Rect::point_in_cone(self.points[i], cone_origin, dir_norm, radius, angle) {
+            if (self.points[i] - center).norm_squared() <= radius * radius {
                 found.push(self.indices[i]);
             }
         }
-    
+
         if self.divided {
-            found.extend(self.northwest.as_ref().unwrap().query_cone(cone_origin, dir_norm, radius, angle));
-            found.extend(self.northeast.as_ref().unwrap().query_cone(cone_origin, dir_norm, radius, angle));
-            found.extend(self.southwest.as_ref().unwrap().query_cone(cone_origin, dir_norm, radius, angle));
-            found.extend(self.southeast.as_ref().unwrap().query_cone(cone_origin, dir_norm, radius, angle));
+            found.extend(self.northwest.as_ref().unwrap().query_cone(center, _direction, radius, _angle));
+            found.extend(self.northeast.as_ref().unwrap().query_cone(center, _direction, radius, _angle));
+            found.extend(self.southwest.as_ref().unwrap().query_cone(center, _direction, radius, _angle));
+            found.extend(self.southeast.as_ref().unwrap().query_cone(center, _direction, radius, _angle));
         }
-    
+
         found
     }
 
