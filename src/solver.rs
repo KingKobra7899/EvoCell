@@ -18,6 +18,7 @@ pub struct PhysicsSolver {
     pub plants: Vec<usize>,
     pub radii: Vec<f32>,
     pub is_plant: Vec<bool>,
+    pub spring_connections: Vec<Vector2<usize>>,
     width: i32,
     height: i32,
     pub(crate) num_cells: i32,
@@ -34,13 +35,14 @@ pub struct PhysicsSolver {
     pub avg_sight_r: f32,
     pub num_particles: i32,
     pub pending_deletions: Vec<usize>, // New field for deferred deletions
-    pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
+    pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
 }
 
 impl PhysicsSolver {
     pub fn new(width: i32, height: i32) -> PhysicsSolver {
         return PhysicsSolver {
             positions: Vec::new(),
+            spring_connections: Vec::new(),
             rng: rand::rng(),
             old_positions: Vec::new(),
             accelerations: Vec::new(),
@@ -213,10 +215,31 @@ impl PhysicsSolver {
             self.accelerations[i] = Vector2::new(0.0, 0.0);
     
             // Radius based on mass
-            self.radii[i] = f32::max(5.0 * self.masses[i].sqrt() * 0.5, 5.0);
+            self.radii[i] = f32::max(5.0 * self.masses[i].sqrt() * 0.5, 2.0);
         }
     }
     
+    pub fn apply_springs(&mut self, k: f32) {
+        let spring_connections = self.spring_connections.clone(); // Drop the borrow
+        for pair in &spring_connections {
+            let p1 = pair[0];
+            let p2 = pair[1];
+
+            let pos1 = self.positions[p1];
+            let pos2 = self.positions[p2];
+
+            let axis = pos1 - pos2;
+            let dist = axis.magnitude();
+
+            if dist != 0.0 {
+                let normal = axis / dist;
+                let force = -dist * k * normal;
+
+                self.accelerate_particle(p1, force / 2.0);
+                self.accelerate_particle(p2, -force / 2.0);
+            }
+        }
+    }
     
 
     pub fn update_quadtree(&mut self) {
@@ -386,7 +409,7 @@ for index in deletions_to_process {
     }
 
     fn process_additions(&mut self) {
-        for (child_pos, child_mass, brain_delta, child_brain_size, child_sight_r, child_sight_a, child_pred, child_max_speed, parent_cell) in self.pending_additions.drain(..) {
+        for (child_pos, child_mass, brain_delta, child_brain_size, child_sight_r, child_sight_a, child_pred, child_max_speed,child_adhesion, parent_cell) in self.pending_additions.drain(..) {
             
             let child_index = self.num_particles as usize;
             
@@ -422,6 +445,7 @@ for index in deletions_to_process {
                     old_h: 0.0,
                     old_iso: 0.0,
                     old_soc: 0.0,
+                    adhesion: child_adhesion,
                     // Use safe_child_brain_size here
                     old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
                     sight_r: child_sight_r,
@@ -448,6 +472,7 @@ for index in deletions_to_process {
                     current_energy: child_mass,
                     state_encoder: child_se,
                     social_decoder: child_sd,
+                    adhesion: child_adhesion,
                     hunger_decoder: child_hd,
                     isolation_decoder: child_id,
                     Brain: child_brain, // Use new brain instead of mutated parent
@@ -481,6 +506,7 @@ for index in deletions_to_process {
                         current_mass: child_mass / 2.0,
                         max_mass: child_mass,
                         max_speed: child_max_speed,
+                        adhesion: child_adhesion,
                         sight_r: child_sight_r,
                         sight_a: child_sight_a,
                         predation: child_pred,
@@ -507,6 +533,7 @@ for index in deletions_to_process {
                     social_decoder: child_sd,
                     hunger_decoder: child_hd,
                     isolation_decoder: child_id,
+                    adhesion: child_adhesion,
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 2.0,
                     max_mass: child_mass,
@@ -525,6 +552,10 @@ for index in deletions_to_process {
     
             self.cells.push(child_cell);
             self.cell_indices.push(child_index);
+
+            if(self.rng.random_range(0.0..1.0) < parent_cell.adhesion) {
+                self.spring_connections.push(Vector2::new(parent_cell.index, child_index));
+            }
         }
     }
 
@@ -585,6 +616,7 @@ for index in deletions_to_process {
             self.update_quadtree();
     
             // Update physics
+            self.apply_springs(100);
             self.integrate_forces(dt / (substeps as f32), grav, 15.0, 150.0);
             self.inter_particle_collisions();
             self.apply_rect_constraint(self.boundary);

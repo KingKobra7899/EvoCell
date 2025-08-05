@@ -7,7 +7,7 @@ use rand_distr::{Normal, Distribution};
 use nalgebra_glm as glm;
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.1;
+const MUTATION_RATE: f64 = 0.5;
 
 use serde::{Serialize, Deserialize};
 
@@ -262,6 +262,7 @@ pub struct Cell {
     pub max_speed: f32,
     pub old_h: f32,
     pub old_iso: f32,
+    pub adhesion: f32,
     pub old_soc: f32,
     pub old_encoding: DMatrix<f32>,
     pub sight_r: f32,
@@ -302,6 +303,7 @@ impl Cell {
             sight_a: sight_angle_dist.sample(rng),
             desired_energy: mass,
             predation: 0.0,
+            adhesion: predation_dist.sample(rng),
             to_delete: false,
         }
     }
@@ -313,6 +315,7 @@ impl Cell {
         let mut child_sight_r = self.sight_r;
         let mut child_sight_a = self.sight_a;
         let mut child_pred = self.predation;
+        let mut child_adhesion = self.adhesion;
         let mut child_max_speed = self.max_speed;
         let mut brain_delta: i32 = 0;
 
@@ -338,8 +341,13 @@ impl Cell {
             child_max_speed = clamp(child_max_speed, 0.0, 50.0);
         }
 
+        if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
+            child_adhesion += world.rng.random_range(-0.1..0.1);
+            child_adhesion = clamp(child_adhesion, 0.0, 1.0);
+        }
+
         // Add child to pending additions instead of directly adding
-        world.pending_additions.push((child_pos, child_mass, brain_delta, child_brain_size, clamp(child_sight_r,0.0, 100.0), child_sight_a, child_pred, child_max_speed, self.clone()));
+        world.pending_additions.push((child_pos, child_mass, brain_delta, child_brain_size, clamp(child_sight_r,0.0, 100.0), child_sight_a, child_pred, child_max_speed, child_adhesion, self.clone()));
     }
 
     pub fn encode_environment(&self, world: &PhysicsSolver) -> DMatrix<f32> {
@@ -406,7 +414,7 @@ impl Cell {
                 let is_plant = world.is_plant[idx as usize];
                 let can_eat_animal = self.predation > 0.5 && !is_plant;
 
-                if (is_plant || can_eat_animal) && idx != self.index as i32 && world.masses[idx as usize] < self.current_mass {
+                if (is_plant || can_eat_animal) && idx != self.index as i32 && world.masses[idx as usize] < self.current_mass * 4.0{
                         let energy_gain = world.masses[idx as usize] * 5.0; // 20x mass to energy conversion
                         self.current_energy += energy_gain;
                         //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
@@ -423,9 +431,9 @@ impl Cell {
         world.positions[self.index] += movement_vec;
 
         // ----- Metabolic calculations -----
-        let basal_cost = 0.02 * f32::powf(self.current_mass, 0.75); // Kleiber's law
-        let brain_cost = 0.025* f32::powf(self.brain_size as f32, 0.86);
-        let move_cost = 0.1 * self.current_mass * movement_vec.magnitude().powi(4); // cost grows quadratically with acceleration
+        let basal_cost = 0.1 * f32::powf(self.current_mass, 0.75); // Kleiber's law
+        let brain_cost = 0.001* f32::powf(self.brain_size as f32, 0.86);
+        let move_cost = 0.1 * self.current_mass * movement_vec.magnitude().powi(2); // cost grows quadratically with acceleration
        
         self.metabolic_rate = basal_cost + brain_cost + move_cost;
         self.current_energy -= self.metabolic_rate;
@@ -518,6 +526,7 @@ impl Clone for Cell {
             old_h: self.old_h,
             old_iso: self.old_iso,
             old_soc: self.old_soc,
+            adhesion: self.adhesion,
             old_encoding: self.old_encoding.clone(),
             sight_r: self.sight_r,
             sight_a: self.sight_a,
