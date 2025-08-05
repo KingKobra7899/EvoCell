@@ -165,8 +165,8 @@ impl DirMovementEncoder {
     pub fn get_movement_vector(&self, input: &DMatrix<f32>, max_speed: f32) -> Vector2<f32> {
         let base_output = self.decoder.encode(&self.encoder.encode(&input));
         let mut norm_output: Vector2<f32> = Vector2::new(base_output[0], base_output[1]);
-        norm_output.x = max_speed * (norm_output.x + 1.0) / 2.0;
-        norm_output.y = max_speed * (norm_output.y + 1.0) / 2.0;
+        norm_output.x = max_speed * (norm_output.x);
+        norm_output.y = max_speed * (norm_output.y);
         return norm_output;
     }
 }
