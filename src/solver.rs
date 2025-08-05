@@ -509,9 +509,9 @@ for index in deletions_to_process {
             let mass = self.rng.random_range(6.0..10.0);
             
             if self.rng.random_range(0.0..1.0) < plant_ratio {
-                self.add_plant(pos, mass, mass, Vector2::new(0.0, 0.0));
+                self.add_plant(pos, mass * 0.5, mass, Vector2::new(0.0, 0.0));
             } else {
-                self.add_cell(pos, mass, mass, Vector2::new(0.0, 0.0));
+                self.add_cell(pos, mass * 1.5, mass, Vector2::new(0.0, 0.0));
             }
         }
     }
@@ -546,7 +546,7 @@ for index in deletions_to_process {
             self.update_quadtree();
     
             // Update physics
-            self.integrate_forces(dt / (substeps as f32), grav, 1.5, 15.0);
+            self.integrate_forces(dt / (substeps as f32), grav, 15.0, 150.0);
             self.inter_particle_collisions();
             self.apply_rect_constraint(self.boundary);
         }
