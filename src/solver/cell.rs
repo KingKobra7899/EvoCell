@@ -384,6 +384,16 @@ impl Cell {
                     world.pending_deletions.push(idx as usize);
                     break;
                 }
+                }else if !can_eat_animal && !is_plant {
+                    self.current_mass -= 0.01 * self.current_mass; // Lose mass if can't eat
+                    
+                    //increase mass of other creature (sharing!)
+                    for cell in world.cells.iter_mut() {
+                        if cell.index == idx as usize {
+                            cell.current_mass += 0.01 * self.current_mass; // Share some mass
+                            break;
+                        }
+                    }
                 }
             }
         }
