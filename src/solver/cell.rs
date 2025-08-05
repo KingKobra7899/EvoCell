@@ -301,7 +301,7 @@ impl Cell {
             child_pred += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_max_speed += world.rng.random_range(-1.0..1.0);
+            //child_max_speed += world.rng.random_range(-1.0..1.0);
             child_max_speed = clamp(child_max_speed, 0.0, 50.0);
         }
 
@@ -376,7 +376,7 @@ impl Cell {
 
                 if is_plant || (can_eat_animal && idx != self.index as i32) && world.masses[idx as usize] < self.current_mass {
                 if(world.rng.random_range(0.0..1.0) < 0.1) { // 50% chance to successfully eat
-                    let energy_gain = world.masses[idx as usize] * 20.0; // 20x mass to energy conversion
+                    let energy_gain = world.masses[idx as usize] * 5.0; // 20x mass to energy conversion
                     self.current_energy += energy_gain;
                     //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
                     
@@ -385,12 +385,12 @@ impl Cell {
                     break;
                 }
                 }else if !can_eat_animal && !is_plant {
-                    self.current_mass -= 0.01 * self.current_mass; // Lose mass if can't eat
-                    
-                    //increase mass of other creature (sharing!)
+                   
                     for cell in world.cells.iter_mut() {
                         if cell.index == idx as usize {
-                            cell.current_mass += 0.01 * self.current_mass; // Share some mass
+                            let avg_mass = (self.current_mass + cell.current_mass) / 2.0;
+                            self.current_mass = avg_mass;
+                            cell.current_mass = avg_mass;
                             break;
                         }
                     }
@@ -478,7 +478,7 @@ impl Cell {
         // ----- Metabolic calculations -----
         let basal_cost = 0.02 * f32::powf(self.current_mass, 0.75); // Kleiber's law
         let brain_cost = 0.025* f32::powf(self.brain_size as f32, 0.86);
-        let move_cost = 0.05 * self.current_mass * movement.magnitude().powi(2); // cost grows quadratically with acceleration
+        let move_cost = 0.1 * self.current_mass * movement.magnitude().powi(4); // cost grows quadratically with acceleration
        
         self.metabolic_rate = basal_cost + brain_cost + move_cost;
         self.current_energy -= self.metabolic_rate;
