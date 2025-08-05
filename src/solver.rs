@@ -260,6 +260,12 @@ impl PhysicsSolver {
                     
                     self.positions[i] += 0.5 * norm * sep1;
                     self.positions[n as usize] -= 0.5 * norm * sep2;
+
+                    if !self.is_plant[i] && !self.is_plant[n as usize] {
+                        let avg_mass = (self.masses[i] + self.masses[n as usize]) / 2.0;
+                        self.masses[i] = avg_mass;
+                        self.masses[n as usize] = avg_mass;
+                    }
                 }
             }
         }

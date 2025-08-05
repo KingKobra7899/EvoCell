@@ -268,7 +268,7 @@ impl Cell {
             sight_r: sight_r_dist.sample(rng),
             sight_a: sight_angle_dist.sample(rng),
             desired_energy: mass,
-            predation: predation_dist.sample(rng),
+            predation: 0.0,
             to_delete: false,
         }
     }
@@ -301,7 +301,7 @@ impl Cell {
             child_pred += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            //child_max_speed += world.rng.random_range(-1.0..1.0);
+            child_max_speed += world.rng.random_range(-1.0..1.0);
             child_max_speed = clamp(child_max_speed, 0.0, 50.0);
         }
 
@@ -347,6 +347,7 @@ impl Cell {
     }
 
     pub fn timestep(&mut self, world: &mut PhysicsSolver) {
+        self.current_mass = world.masses[self.index]; // Sync mass with world
         let internal_rep = self.encode_environment(world);
         self.old_encoding = internal_rep.clone();
 
@@ -375,26 +376,17 @@ impl Cell {
                 let can_eat_animal = self.predation > 0.5 && !is_plant;
 
                 if is_plant || (can_eat_animal && idx != self.index as i32) && world.masses[idx as usize] < self.current_mass {
-                if(world.rng.random_range(0.0..1.0) < 0.1) { // 50% chance to successfully eat
-                    let energy_gain = world.masses[idx as usize] * 5.0; // 20x mass to energy conversion
-                    self.current_energy += energy_gain;
-                    //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
-                    
-                    // Mark for deletion instead of deleting immediately
-                    world.pending_deletions.push(idx as usize);
-                    break;
-                }
-                }else if !can_eat_animal && !is_plant {
-                   
-                    for cell in world.cells.iter_mut() {
-                        if cell.index == idx as usize {
-                            let avg_mass = (self.current_mass + cell.current_mass) / 2.0;
-                            self.current_mass = avg_mass;
-                            cell.current_mass = avg_mass;
-                            break;
-                        }
+                    if(world.rng.random_range(0.0..1.0) < 0.1) { // 50% chance to successfully eat
+                        let energy_gain = world.masses[idx as usize] * 5.0; // 20x mass to energy conversion
+                        self.current_energy += energy_gain;
+                        //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
+                        
+                        // Mark for deletion instead of deleting immediately
+                        world.pending_deletions.push(idx as usize);
+                        break;
                     }
                 }
+                
             }
         }
 
@@ -505,7 +497,7 @@ impl Cell {
             self.current_mass *= 0.5; // post-reproduction weight loss
         }
         
-        world.masses[self.index] = self.current_mass;
+        world.masses[self.index] = self.current_mass; // Sync mass back to world
         world.avg_speed += self.max_speed / world.num_cells as f32;
         world.avg_brain_size += self.brain_size as f32 / world.num_cells as f32;
         world.avg_hunger +=if self.old_h.is_finite() {self.old_h / world.num_cells as f32} else {0.0};
