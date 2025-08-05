@@ -7,7 +7,7 @@ use rand_distr::{Normal, Distribution};
 use nalgebra_glm as glm;
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.001;
+const MUTATION_RATE: f64 = 0.1;
 
 use serde::{Serialize, Deserialize};
 
@@ -244,10 +244,10 @@ impl Cell {
         let sight_r_dist: Normal<f32> = Normal::new(50.0, 10.0).unwrap();
         let sight_angle_dist: Normal<f32> = Normal::new(PI / 4.0, PI / 12.0).unwrap();
         let brain_size_dist: Normal<f32> = Normal::new(9.0, 2.0).unwrap();
-        let predation_dist: Normal<f32> = Normal::new(0.1, 0.01).unwrap();
+        let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
-        let max_speed = rng.random_range(0.25..0.5);
+        let max_speed = rng.random_range(0.1..0.5);
 
         Cell {
             index,
@@ -274,7 +274,7 @@ impl Cell {
     }
 
     pub fn create_child(&self, world: &mut PhysicsSolver) {
-        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(world.radii[self.index] * 3.5, 0.0);
+        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(world.radii[self.index] * 4.3, 0.0);
         let mut child_brain_size = self.brain_size;
         let mut child_mass = self.max_mass;
         let mut child_sight_r = self.sight_r;
@@ -359,7 +359,7 @@ impl Cell {
         let point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
 
         // Eating logic - mark particles for deletion instead of deleting immediately
-        let eating_range = world.radii[self.index] * 2.0;
+        let eating_range = world.radii[self.index] * 1.0;
         let eating_points = world.qt.query(&Rect::new(pos.x, pos.y, world.radii[self.index] * 5.0, world.radii[self.index] * 5.0));
 
         for &idx in &eating_points {
@@ -370,18 +370,20 @@ impl Cell {
             let target_pos = world.positions[idx as usize];
             let distance = (pos - target_pos).magnitude();
 
-            if distance <= eating_range {
+            if distance <= (eating_range + world.radii[idx as usize]) {
                 let is_plant = world.is_plant[idx as usize];
                 let can_eat_animal = self.predation > 0.5 && !is_plant;
 
-                if is_plant || can_eat_animal {
-                    let energy_gain = world.masses[idx as usize] * if is_plant { 5.0 } else { 10.0 };
+                if is_plant || (can_eat_animal && idx != self.index as i32) && world.masses[idx as usize] < self.current_mass {
+                if(world.rng.random_range(0.0..1.0) < 0.1) { // 50% chance to successfully eat
+                    let energy_gain = world.masses[idx as usize] * 20.0; // 20x mass to energy conversion
                     self.current_energy += energy_gain;
                     //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
                     
                     // Mark for deletion instead of deleting immediately
                     world.pending_deletions.push(idx as usize);
                     break;
+                }
                 }
             }
         }
@@ -466,7 +468,7 @@ impl Cell {
         // ----- Metabolic calculations -----
         let basal_cost = 0.02 * f32::powf(self.current_mass, 0.75); // Kleiber's law
         let brain_cost = 0.025* f32::powf(self.brain_size as f32, 0.86);
-        let move_cost = 0.01 * self.current_mass * movement.magnitude().powi(2); // cost grows quadratically with acceleration
+        let move_cost = 0.05 * self.current_mass * movement.magnitude().powi(2); // cost grows quadratically with acceleration
        
         self.metabolic_rate = basal_cost + brain_cost + move_cost;
         self.current_energy -= self.metabolic_rate;

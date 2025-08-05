@@ -178,21 +178,32 @@ impl PhysicsSolver {
         }
     }
 
-    pub fn integrate_forces(&mut self, dt: f32, grav: Vector2<f32>) {
-        
-    
+    pub fn integrate_forces(&mut self, dt: f32, grav: Vector2<f32>, friction: f32, drag: f32) {
         for i in 0..self.num_particles as usize {
             let pos = self.positions[i];
             let old_pos = self.old_positions[i];
     
-            // Velocity from previous positions
-            let mut velocity = (pos - old_pos) / dt;
-            velocity *= 0.15;
-            // Acceleration = existing acceleration + gravity - damping * velocity
-            let acc = self.accelerations[i] + grav - velocity;
+            // Current motion vector (pos - old_pos is displacement over last step)
+            let mut displacement = pos - old_pos;
+    
+            // --- Apply drag (velocity-proportional) ---
+            // Drag reduces displacement proportionally to its magnitude
+            displacement *= 1.0 - drag * dt;
+    
+            // --- Apply friction (constant opposing motion) ---
+            // Friction always reduces speed by a fixed amount per second
+            let speed = displacement.magnitude();
+            if speed > 0.0 {
+                let friction_amount = friction * dt;
+                let new_speed = (speed - friction_amount).max(0.0);
+                displacement *= new_speed / speed;
+            }
+    
+            // Acceleration = existing + gravity
+            let acc = self.accelerations[i] + grav;
     
             // Verlet integration
-            let new_pos = pos + (pos - old_pos) + acc * dt * dt;
+            let new_pos = pos + displacement + acc * dt * dt;
     
             // Store old pos for next iteration
             self.old_positions[i] = pos;
@@ -201,10 +212,11 @@ impl PhysicsSolver {
             // Clear acceleration for next step
             self.accelerations[i] = Vector2::new(0.0, 0.0);
     
-            // Radius based on mass (only if mass changes)
+            // Radius based on mass
             self.radii[i] = f32::max(5.0 * self.masses[i].sqrt() * 0.5, 5.0);
         }
     }
+    
     
 
     pub fn update_quadtree(&mut self) {
@@ -528,12 +540,12 @@ for index in deletions_to_process {
             self.update_quadtree();
     
             // Update physics
-            self.integrate_forces(dt / (substeps as f32), grav);
+            self.integrate_forces(dt / (substeps as f32), grav, 1.5, 15.0);
             self.inter_particle_collisions();
             self.apply_rect_constraint(self.boundary);
         }
 
-        if self.rng.random_range(0.0..1.0) < sigmoid(38.97382 / self.num_plants as f32) && self.num_cells > 0 {
+        if self.rng.random_range(0.0..1.0) < 0.5 && self.num_cells > 0 {
             self.random_spawn_plant();
         }
     }
