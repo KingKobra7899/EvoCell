@@ -376,7 +376,7 @@ impl Cell {
             }
         }
 
-        self.state_encoder.encode(&full_env)
+        full_env
     }
 
     pub fn timestep(&mut self, world: &mut PhysicsSolver) {

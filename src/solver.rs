@@ -385,7 +385,6 @@ for index in deletions_to_process {
         self.num_particles -= 1;
     }
 
-    // Process pending additions
     fn process_additions(&mut self) {
         for (child_pos, child_mass, brain_delta, child_brain_size, child_sight_r, child_sight_a, child_pred, child_max_speed, parent_cell) in self.pending_additions.drain(..) {
             
@@ -400,12 +399,16 @@ for index in deletions_to_process {
             self.is_plant.push(false);
             self.num_particles += 1;
             self.num_cells += 1;
-
+    
+            // Ensure child_brain_size is valid and positive
+            let safe_child_brain_size = child_brain_size.max(1);
+            let input_size = (65 + safe_child_brain_size) as usize;
+            
             // Create child cell based on brain_delta
             let child_cell = if brain_delta == 0 {
                 Cell {
                     index: child_index,
-                    brain_size: child_brain_size,
+                    brain_size: safe_child_brain_size,
                     current_energy: child_mass,
                     state_encoder: parent_cell.state_encoder.mutate(&mut self.rng),
                     social_decoder: parent_cell.social_decoder.mutate(&mut self.rng),
@@ -419,7 +422,8 @@ for index in deletions_to_process {
                     old_h: 0.0,
                     old_iso: 0.0,
                     old_soc: 0.0,
-                    old_encoding: nalgebra::DMatrix::<f32>::zeros(child_brain_size as usize, 1),
+                    // Use safe_child_brain_size here
+                    old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
                     sight_r: child_sight_r,
                     sight_a: child_sight_a,
                     desired_energy: child_mass,
@@ -427,24 +431,30 @@ for index in deletions_to_process {
                     to_delete: false,
                 }
             } else if brain_delta > 0 {
-                let child_se = parent_cell.state_encoder.add_neurons(&mut self.rng, brain_delta as usize).mutate(&mut self.rng);
-                let child_sd = parent_cell.social_decoder.add_neurons(&mut self.rng, brain_delta as usize).mutate(&mut self.rng);
-                let child_hd = parent_cell.hunger_decoder.add_neurons(&mut self.rng, brain_delta as usize).mutate(&mut self.rng);
-                let child_id = parent_cell.isolation_decoder.add_neurons(&mut self.rng, brain_delta as usize).mutate(&mut self.rng);
-
+                let brain_add = brain_delta as usize;
+                
+                // Create new encoders with proper dimensions
+                let child_se = parent_cell.state_encoder.add_neurons(&mut self.rng, brain_add).mutate(&mut self.rng);
+                let child_sd = parent_cell.social_decoder.add_neurons(&mut self.rng, brain_add).mutate(&mut self.rng);
+                let child_hd = parent_cell.hunger_decoder.add_neurons(&mut self.rng, brain_add).mutate(&mut self.rng);
+                let child_id = parent_cell.isolation_decoder.add_neurons(&mut self.rng, brain_add).mutate(&mut self.rng);
+                
+                // Create new Brain encoder with updated input size
+                let child_brain = cell::DirMovementEncoder::random(&mut self.rng, safe_child_brain_size as usize);
+    
                 Cell {
                     index: child_index,
-                    brain_size: child_brain_size,
+                    brain_size: safe_child_brain_size,
                     current_energy: child_mass,
                     state_encoder: child_se,
                     social_decoder: child_sd,
                     hunger_decoder: child_hd,
                     isolation_decoder: child_id,
-                    Brain: parent_cell.Brain.mutate(&mut self.rng),
+                    Brain: child_brain, // Use new brain instead of mutated parent
                     old_h: 0.0,
                     old_iso: 0.0,
                     old_soc: 0.0,
-                    old_encoding: nalgebra::DMatrix::<f32>::zeros(child_brain_size as usize, 1),
+                    old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 2.0,
                     max_mass: child_mass,
@@ -457,15 +467,41 @@ for index in deletions_to_process {
                 }
             } else {
                 let brain_remove = (-brain_delta) as usize;
-                let child_se = parent_cell.state_encoder.remove_neurons(&mut self.rng, brain_remove).mutate(&mut self.rng);
-                let child_sd = parent_cell.social_decoder.remove_neurons(&mut self.rng, brain_remove).mutate(&mut self.rng);
-                let child_hd = parent_cell.hunger_decoder.remove_neurons(&mut self.rng, brain_remove).mutate(&mut self.rng);
-                let child_id = parent_cell.isolation_decoder.remove_neurons(&mut self.rng, brain_remove).mutate(&mut self.rng);
-
+                
+                // Ensure we don't remove more neurons than available
+                let parent_brain_size = parent_cell.brain_size as usize;
+                let actual_remove = brain_remove.min(parent_brain_size.saturating_sub(1));
+                
+                if actual_remove >= parent_brain_size {
+                    // If we would remove too many neurons, create a minimal brain instead
+                    let minimal_cell = Cell::random(&mut self.rng, child_mass, child_index);
+                    self.cells.push(Cell {
+                        index: child_index,
+                        brain_size: 1, // Minimal brain size
+                        current_mass: child_mass / 2.0,
+                        max_mass: child_mass,
+                        max_speed: child_max_speed,
+                        sight_r: child_sight_r,
+                        sight_a: child_sight_a,
+                        predation: child_pred,
+                        ..minimal_cell
+                    });
+                    self.cell_indices.push(child_index);
+                    continue;
+                }
+                
+                let child_se = parent_cell.state_encoder.remove_neurons(&mut self.rng, actual_remove).mutate(&mut self.rng);
+                let child_sd = parent_cell.social_decoder.remove_neurons(&mut self.rng, actual_remove).mutate(&mut self.rng);
+                let child_hd = parent_cell.hunger_decoder.remove_neurons(&mut self.rng, actual_remove).mutate(&mut self.rng);
+                let child_id = parent_cell.isolation_decoder.remove_neurons(&mut self.rng, actual_remove).mutate(&mut self.rng);
+                
+                // Create new Brain encoder with updated input size
+                let child_brain = cell::DirMovementEncoder::random(&mut self.rng, safe_child_brain_size as usize);
+    
                 Cell {
                     index: child_index,
-                    brain_size: child_brain_size,
-                    Brain: parent_cell.Brain.mutate(&mut self.rng),
+                    brain_size: safe_child_brain_size,
+                    Brain: child_brain, // Use new brain instead of mutated parent
                     current_energy: child_mass,
                     state_encoder: child_se,
                     social_decoder: child_sd,
@@ -480,13 +516,13 @@ for index in deletions_to_process {
                     old_h: 0.0,
                     old_iso: 0.0,
                     old_soc: 0.0,
-                    old_encoding: nalgebra::DMatrix::<f32>::zeros(child_brain_size as usize, 1),
+                    old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
                     desired_energy: child_mass,
                     predation: child_pred,
                     to_delete: false,
                 }
             };
-
+    
             self.cells.push(child_cell);
             self.cell_indices.push(child_index);
         }
