@@ -376,7 +376,6 @@ impl Cell {
                 let can_eat_animal = self.predation > 0.5 && !is_plant;
 
                 if (is_plant || can_eat_animal) && idx != self.index as i32 && world.masses[idx as usize] < self.current_mass {
-                     // 50% chance to successfully eat
                         let energy_gain = world.masses[idx as usize] * 5.0; // 20x mass to energy conversion
                         self.current_energy += energy_gain;
                         //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
@@ -384,7 +383,6 @@ impl Cell {
                         // Mark for deletion instead of deleting immediately
                         world.pending_deletions.push(idx as usize);
                         break;
-                    
                 }
                 
             }
@@ -439,9 +437,9 @@ impl Cell {
         let (hunger_motivation, social_motivation, isolation_motivation) =
             if max_motivation.abs() > f32::EPSILON {
                 (
-                    (self.old_h / max_motivation) - 0.5,
-                    (self.old_soc / max_motivation) - 0.5,
-                    (self.old_iso / max_motivation) - 0.5,
+                    self.old_h / max_motivation,
+                    self.old_soc / max_motivation,
+                    self.old_iso / max_motivation,
                 )
             } else {
                 // Equal probability when all motivations are zero
@@ -449,7 +447,9 @@ impl Cell {
             };
 
             
-            let mut movement = Vector2::new(hunger_motivation + social_motivation - isolation_motivation, hunger_motivation - social_motivation + isolation_motivation); //Combine motivations
+            let mut movement = hunger_vel * hunger_motivation
+                + social_vel * social_motivation
+                + isolation_vel * isolation_motivation;
 
             if movement.x.is_nan() || movement.y.is_nan() {
                 
@@ -462,9 +462,7 @@ impl Cell {
 
                 movement = Vector2::new(angle.cos(), angle.sin()) * speed;
             }
-            if movement.magnitude() > self.max_speed {
-                movement = safe_normalize(movement) * self.max_speed;
-            }
+
             world.positions[self.index] += movement;
 
         // ----- Metabolic calculations -----

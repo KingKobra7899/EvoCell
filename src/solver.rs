@@ -511,7 +511,7 @@ for index in deletions_to_process {
             if self.rng.random_range(0.0..1.0) < plant_ratio {
                 self.add_plant(pos, mass * 0.5, mass, Vector2::new(0.0, 0.0));
             } else {
-                self.add_cell(pos, mass * 1.5, mass, Vector2::new(0.0, 0.0));
+                self.add_cell(pos, mass * 1.5,  mass, Vector2::new(0.0, 0.0));
             }
         }
     }
