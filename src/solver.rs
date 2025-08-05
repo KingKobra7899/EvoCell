@@ -410,6 +410,7 @@ for index in deletions_to_process {
                     state_encoder: parent_cell.state_encoder.mutate(&mut self.rng),
                     social_decoder: parent_cell.social_decoder.mutate(&mut self.rng),
                     hunger_decoder: parent_cell.hunger_decoder.mutate(&mut self.rng),
+                    Brain: parent_cell.Brain.mutate(&mut self.rng),
                     isolation_decoder: parent_cell.isolation_decoder.mutate(&mut self.rng),
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 4.0,
@@ -439,6 +440,7 @@ for index in deletions_to_process {
                     social_decoder: child_sd,
                     hunger_decoder: child_hd,
                     isolation_decoder: child_id,
+                    Brain: parent_cell.Brain.mutate(&mut self.rng),
                     old_h: 0.0,
                     old_iso: 0.0,
                     old_soc: 0.0,
@@ -463,6 +465,7 @@ for index in deletions_to_process {
                 Cell {
                     index: child_index,
                     brain_size: child_brain_size,
+                    Brain: parent_cell.Brain.mutate(&mut self.rng),
                     current_energy: child_mass,
                     state_encoder: child_se,
                     social_decoder: child_sd,
