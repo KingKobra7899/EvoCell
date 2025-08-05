@@ -140,6 +140,37 @@ impl EnvironmentalEncoder {
     }
 }
 
+pub struct DirMovementEncoder {
+    pub(crate) encoder: EnvironmentalEncoder,
+    pub(crate) decoder: EnvironmentalEncoder
+}
+
+impl DirMovementEncoder {
+    pub fn random (rng: &mut ThreadRng, brain_size: usize) -> Self {
+        DirMovementEncoder{
+            encoder: EnvironmentalEncoder::random(65 + brain_size, brain_size, rng),
+            decoder: EnvironmentalEncoder::random(brain_size, 2, rng)
+
+        }
+    }
+
+    pub fn mutate (&self, rng: &mut ThreadRng) -> Self{
+        DirMovementEncoder{
+            encoder: self.encoder.mutate(rng),
+            decoder: self.decoder.mutate(rng)
+
+        }
+    }
+
+    pub fn get_movement_vector(&self, input: &DMatrix<f32>, max_speed: f32) -> Vector2<f32> {
+        let base_output = self.decoder.encode(&self.encoder.encode(&input));
+        let mut norm_output: Vector2<f32> = Vector2::new(base_output[0], base_output[1]);
+        norm_output.x = max_speed * (norm_output.x + 1.0) / 2.0;
+        norm_output.y = max_speed * (norm_output.y + 1.0) / 2.0;
+        return norm_output;
+    }
+}
+
 pub struct CognitiveDecoder {
     pub(crate) weights: DVector<f32>,
 }
@@ -224,6 +255,7 @@ pub struct Cell {
     pub social_decoder: CognitiveDecoder,
     pub hunger_decoder: CognitiveDecoder,
     pub isolation_decoder: CognitiveDecoder,
+    pub Brain: DirMovementEncoder,
     pub metabolic_rate: f32,
     pub current_mass: f32,
     pub max_mass: f32,
@@ -257,6 +289,7 @@ impl Cell {
             social_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             hunger_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             isolation_decoder: CognitiveDecoder::random(brain_size as usize, rng),
+            Brain: DirMovementEncoder::random(rng, brain_size as usize),
             metabolic_rate: 0.0,
             old_h: 0.0,
             old_iso: 0.0,
@@ -349,11 +382,9 @@ impl Cell {
     pub fn timestep(&mut self, world: &mut PhysicsSolver) {
         self.current_mass = world.masses[self.index]; // Sync mass with world
         let internal_rep = self.encode_environment(world);
-        self.old_encoding = internal_rep.clone();
+        
+        let movement_vec: Vector2<f32> = self.Brain.get_movement_vector(&internal_rep, self.max_speed);
 
-        self.old_h = self.hunger_decoder.decode(&internal_rep.column(0).into_owned());
-        self.old_iso = self.isolation_decoder.decode(&internal_rep.column(0).into_owned());
-        self.old_soc = self.social_decoder.decode(&internal_rep.column(0).into_owned());
 
         let pos: Vector2<f32> = world.positions[self.index];
         let vel: Vector2<f32> = world.positions[self.index] - world.old_positions[self.index];
@@ -388,87 +419,13 @@ impl Cell {
             }
         }
 
-        // Movement logic (unchanged)
-        let food_points: Vec<Vector2<f32>> = point_idx.iter()
-            .filter(|&&idx| {
-                world.is_plant[idx as usize]
-                    || (self.predation > 0.5 && idx != self.index as i32)
-            })
-            .map(|&idx| world.positions[idx as usize])
-            .collect();
-
-        let social_points: Vec<Vector2<f32>> = point_idx.iter()
-            .filter(|&&idx| !world.is_plant[idx as usize] && idx != self.index as i32)
-            .map(|&idx| world.positions[idx as usize])
-            .collect();
-
-        let mean_social_point = if !social_points.is_empty() {
-            Vector2::new(
-                social_points.iter().map(|p| p.x).sum::<f32>() / social_points.len() as f32,
-                social_points.iter().map(|p| p.y).sum::<f32>() / social_points.len() as f32,
-            )
-        } else {
-            pos
-        };
-
-        let mean_hunger_point = if !food_points.is_empty() {
-            Vector2::new(
-                food_points.iter().map(|p| p.x).sum::<f32>() / food_points.len() as f32,
-                food_points.iter().map(|p| p.y).sum::<f32>() / food_points.len() as f32,
-            )
-        } else {
-            pos
-        };
-
-        let safe_normalize = |v: Vector2<f32>| {
-            let mag = v.magnitude();
-            if mag > 0.0 { v / mag } else { Vector2::new(0.0, 0.0) }
-        };
-
-        let hunger_vector = mean_hunger_point - pos;
-        let social_vector = mean_social_point - pos;
-        let isolation_vector = social_vector * -1.0;
-
-        let hunger_vel = if hunger_vector.magnitude() > self.max_speed { safe_normalize(hunger_vector) * self.max_speed } else { hunger_vector };
-        let social_vel = if social_vector.magnitude() > self.max_speed { safe_normalize(social_vector) * self.max_speed } else { social_vector };
-        let isolation_vel = if isolation_vector.magnitude() > self.max_speed { safe_normalize(isolation_vector) * self.max_speed } else { isolation_vector };
-
-        let max_motivation = self.old_h + self.old_soc + self.old_iso;
-        let (hunger_motivation, social_motivation, isolation_motivation) =
-            if max_motivation.abs() > f32::EPSILON {
-                (
-                    self.old_h / max_motivation,
-                    self.old_soc / max_motivation,
-                    self.old_iso / max_motivation,
-                )
-            } else {
-                // Equal probability when all motivations are zero
-                (1.0/3.0, 1.0/3.0, 1.0/3.0)
-            };
-
-            
-            let mut movement = hunger_vel * hunger_motivation
-                + social_vel * social_motivation
-                + isolation_vel * isolation_motivation;
-
-            if movement.x.is_nan() || movement.y.is_nan() {
-                
-                
-                // Random direction in radians
-                let angle = world.rng.random_range(0.0..std::f32::consts::TAU);
-                
-                // Random speed <= max_speed
-                let speed = world.rng.random_range(0.0..=self.max_speed);
-
-                movement = Vector2::new(angle.cos(), angle.sin()) * speed;
-            }
-
-            world.positions[self.index] += movement;
+       
+        world.positions[self.index] += movement_vec;
 
         // ----- Metabolic calculations -----
         let basal_cost = 0.02 * f32::powf(self.current_mass, 0.75); // Kleiber's law
         let brain_cost = 0.025* f32::powf(self.brain_size as f32, 0.86);
-        let move_cost = 0.1 * self.current_mass * movement.magnitude().powi(4); // cost grows quadratically with acceleration
+        let move_cost = 0.1 * self.current_mass * movement_vec.magnitude().powi(4); // cost grows quadratically with acceleration
        
         self.metabolic_rate = basal_cost + brain_cost + move_cost;
         self.current_energy -= self.metabolic_rate;
@@ -552,6 +509,8 @@ impl Clone for Cell {
             social_decoder: CognitiveDecoder::with_weights(self.social_decoder.weights.clone()),
             hunger_decoder: CognitiveDecoder::with_weights(self.hunger_decoder.weights.clone()),
             isolation_decoder: CognitiveDecoder::with_weights(self.isolation_decoder.weights.clone()),
+            Brain: DirMovementEncoder { encoder: EnvironmentalEncoder::with_weights(self.Brain.encoder.weight_matrix.clone(), self.Brain.encoder.bias.clone()), 
+                decoder: EnvironmentalEncoder::with_weights(self.Brain.decoder.weight_matrix.clone(), self.Brain.decoder.bias.clone()) },
             metabolic_rate: self.metabolic_rate,
             current_mass: self.current_mass,
             max_mass: self.max_mass,
