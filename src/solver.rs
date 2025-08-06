@@ -219,29 +219,61 @@ impl PhysicsSolver {
         }
     }
     
-    pub fn apply_springs(&mut self, k: f32) {
+    pub fn apply_springs(&mut self, _k: f32) {
         let spring_connections = self.spring_connections.clone(); // Drop the borrow
         for pair in &spring_connections {
+            
             let p1 = pair[0];
             let p2 = pair[1];
-
+    
+            if p1 >= self.num_particles as usize || p2 >= self.num_particles as usize {
+                continue;
+            }
+    
             let pos1 = self.positions[p1];
             let pos2 = self.positions[p2];
-
+    
             let axis = pos1 - pos2;
             let dist = axis.magnitude();
-
-            if dist != 0.0 {
-                let normal = axis / dist;
-                let force = -dist * k * normal;
-
-                self.accelerate_particle(p1, force / 2.0);
-                self.accelerate_particle(p2, -force / 2.0);
+    
+            let target_distance: f32 = self.radii[p1] + self.radii[p2];
+            
+            if dist != target_distance {
+                // Hard constraint: force distance to sum of radii
+                let normal = if dist > 0.0 {
+                    axis / dist
+                } else {
+                    // If particles are at same position, use arbitrary direction
+                    Vector2::new(1.0, 0.0)
+                };
+                
+                // For velocity Verlet, we need to update previous positions
+                // to maintain velocity consistency
+                let old_pos1 = self.old_positions[p1];
+                let old_pos2 = self.old_positions[p2];
+                
+                // Calculate new positions to maintain exact distance
+                let center = (pos1 + pos2) / 2.0;
+                let half_target = target_distance / 2.0;
+                
+                let new_pos1 = center + normal * half_target;
+                let new_pos2 = center - normal * half_target;
+                
+                // Calculate how much each particle moved
+                let delta1 = new_pos1 - pos1;
+                let delta2 = new_pos2 - pos2;
+                
+                // Update positions
+                self.positions[p1] = new_pos1;
+                self.positions[p2] = new_pos2;
+                
+                // Update old positions to maintain velocity in Verlet integration
+                // old_pos = new_pos - velocity * dt, so we preserve the velocity component
+                self.old_positions[p1] = old_pos1 + delta1;
+                self.old_positions[p2] = old_pos2 + delta2;
             }
         }
     }
-    
-
     pub fn update_quadtree(&mut self) {
         self.qt.clear();
         
@@ -316,6 +348,7 @@ impl PhysicsSolver {
 
         for i in self.qt.query(&expanded_rect) {
             let pos = &mut self.positions[i as usize];
+            
             let r = self.radii[i as usize];
 
             let y_top = rectangle.y - rectangle.h;
@@ -325,6 +358,8 @@ impl PhysicsSolver {
 
             if pos.y - r < y_top {
                 pos.y = y_top + r;
+                self.masses[i as usize] = self.masses[i as usize] * 0.99;
+
             } else if pos.y + r > y_bottom {
                 pos.y = y_bottom - r;
             }
@@ -380,6 +415,24 @@ for index in deletions_to_process {
         self.radii.remove(index);
         self.masses.remove(index);
         self.is_plant.remove(index);
+
+
+        self.spring_connections.retain_mut(|connection| {
+            // Remove connections that involve the deleted particle
+            if connection.x == index || connection.y == index {
+                return false; // Remove this connection
+            }
+            
+            // Update indices for particles that come after the deleted one
+            if connection.x > index {
+                connection.x -= 1;
+            }
+            if connection.y > index {
+                connection.y -= 1;
+            }
+            
+            true // Keep this connection
+        });
 
         // Update cell indices and remove cells
         for i in (0..self.cell_indices.len()).rev() {
@@ -579,9 +632,9 @@ for index in deletions_to_process {
             let mass = self.rng.random_range(6.0..10.0);
             
             if self.rng.random_range(0.0..1.0) < plant_ratio {
-                self.add_plant(pos, mass * 0.5, mass, Vector2::new(0.0, 0.0));
+                self.add_plant(pos, mass, mass, Vector2::new(0.0, 0.0));
             } else {
-                self.add_cell(pos, mass * 1.5,  mass, Vector2::new(0.0, 0.0));
+                self.add_cell(pos, mass ,  mass, Vector2::new(0.0, 0.0));
             }
         }
     }
@@ -597,6 +650,7 @@ for index in deletions_to_process {
         
         for _ in 0..substeps {
             // Move cells out to avoid borrow conflicts
+            
             let mut cells = std::mem::take(&mut self.cells);
             for cell in &mut cells {
                 cell.timestep(self);
@@ -616,16 +670,22 @@ for index in deletions_to_process {
             self.update_quadtree();
     
             // Update physics
-            self.apply_springs(100);
+            
             self.integrate_forces(dt / (substeps as f32), grav, 15.0, 150.0);
+
             self.inter_particle_collisions();
+           
             self.apply_rect_constraint(self.boundary);
+            //self.apply_springs(0.0);
         }
 
         let base_rate = 0.1;
-        let growth_probability = base_rate * (self.num_plants as f32).sqrt(); // or use linear: base_rate * self.num_cells as f32
+        let growth_probability = base_rate * (self.num_plants as f32); // or use linear: base_rate * self.num_cells as f32
         if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells > 0 {
             self.random_spawn_plant();
+        }
+        if self.num_cells == 0 {
+            self.init_world(100, 0.0);
         }
     }
 

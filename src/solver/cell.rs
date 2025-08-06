@@ -7,7 +7,7 @@ use rand_distr::{Normal, Distribution};
 use nalgebra_glm as glm;
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.5;
+const MUTATION_RATE: f64 = 0.1;
 
 use serde::{Serialize, Deserialize};
 
@@ -277,10 +277,10 @@ impl Cell {
         let sight_r_dist: Normal<f32> = Normal::new(50.0, 10.0).unwrap();
         let sight_angle_dist: Normal<f32> = Normal::new(PI / 4.0, PI / 12.0).unwrap();
         let brain_size_dist: Normal<f32> = Normal::new(9.0, 2.0).unwrap();
-        let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
+        let predation_dist: Normal<f32> = Normal::new(0.5, 0.2).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
-        let max_speed = rng.random_range(0.1..0.25);
+        let max_speed = rng.random_range(0.0..0.15);
 
         Cell {
             index,
@@ -415,7 +415,7 @@ impl Cell {
                 let can_eat_animal = self.predation > 0.5 && !is_plant;
 
                 if (is_plant || can_eat_animal) && idx != self.index as i32 && world.masses[idx as usize] < self.current_mass * 4.0{
-                        let energy_gain = world.masses[idx as usize] * 5.0; // 20x mass to energy conversion
+                        let energy_gain = world.masses[idx as usize] * 20.0; // 20x mass to energy conversion
                         self.current_energy += energy_gain;
                         //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
                         
