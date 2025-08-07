@@ -280,7 +280,7 @@ impl Cell {
         let sight_r_dist: Normal<f32> = Normal::new(50.0, 10.0).unwrap();
         let sight_angle_dist: Normal<f32> = Normal::new(PI / 4.0, PI / 12.0).unwrap();
         let brain_size_dist: Normal<f32> = Normal::new(9.0, 2.0).unwrap();
-        let predation_dist: Normal<f32> = Normal::new(0.5, 0.2).unwrap();
+        let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
         let max_speed = rng.random_range(0.1..0.5);
@@ -307,7 +307,7 @@ impl Cell {
             desired_energy: mass,
             predation: predation_dist.sample(rng),
             adhesion: predation_dist.sample(rng),
-            birth_threshold: predation_dist.sample(rng),
+            birth_threshold: clamp(predation_dist.sample(rng) + 0.25, 0.5, 1.0),
             to_delete: false,
         }
     }
@@ -342,7 +342,7 @@ impl Cell {
             child_pred += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_thresh += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
+            child_thresh += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.5, 1.0);
         }
         
 
@@ -516,8 +516,8 @@ impl Cell {
             self.create_child(world);
             
             // Post-reproduction costs
-            self.current_energy *= 0.6;
-            self.current_mass *= 0.7;
+            self.current_energy *= self.birth_threshold;
+            self.current_mass *= self.birth_threshold;
         }
     
         // Ensure mass stays within reasonable bounds
