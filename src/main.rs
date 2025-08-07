@@ -19,6 +19,7 @@ const HEIGHT: usize = 1500;
 struct App {
     window: Option<Window>,
     gpu_renderer: Option<gpu_renderer::GpuRenderer>,
+    time: f32,
     physics_solver: solver::PhysicsSolver,
     frame_count: u32,
     mouse_pos: Vector2<f32>,
@@ -31,12 +32,13 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.init_world(2500, 0.99);
+        physics_solver.init_world(4000, 0.99);
         
         Self {
             window: None,
             mouse_pos: Vector2::new(0.0,0.0),
             gpu_renderer: None,
+            time: 0.0,
             physics_solver,
             frame_count: 0,
             last_fps_time: Instant::now(),
@@ -70,9 +72,11 @@ fn handle_keyboard_input(event: KeyEvent, app: &mut App) {
             Key::Named(NamedKey::ArrowRight) => {
                 if app.paused {
                     app.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
+                    app.time += 1E-4;
                 }else{
                     app.paused = true;
                     app.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
+                    app.time += 1E-4;
                 }
             }
         
@@ -120,7 +124,9 @@ impl ApplicationHandler for App {
     
             WindowEvent::RedrawRequested => {
                 if !self.paused {
-                    self.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0)); // Gravity: (0, 10)
+                    // Update the physics simulation
+                    self.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
+                    self.time += 1E-4;
                 }
     
                 let num_physics_particles = self.physics_solver.positions.len();
@@ -139,41 +145,52 @@ impl ApplicationHandler for App {
                 if let (Some(renderer), Some(window)) = (&mut self.gpu_renderer, &self.window) {
                     renderer.render(window, &gpu_particles, num_physics_particles as u32);
                 }
+                
+                // ---
+                // MODIFIED CODE: Write to CSV on every frame
+                // Note: This will open and close the file for every frame, which can be inefficient.
+                // For a more performant solution, consider opening the file once at the start of the simulation.
+                if let Ok(mut file) = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open("simulation_data.csv")
+                {
+                    // If the file is new (empty), write the header
+                    if file.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
+                        let _ = writeln!(file, "time,num_cells,num_plants,avg_speed,avg_brain_sizex,avg_sight_r,avg_predation,avg_birth_thresh");
+                    }
+                    
+                    let now = Instant::now();
+                    // Use total elapsed time since the simulation began
+                    let time_elapsed = self.time;
+                    
+                    let _ = writeln!(
+                        file,
+                        "{},{},{},{},{},{},{},{}",
+                        time_elapsed,
+                        self.physics_solver.num_cells,
+                        self.physics_solver.num_plants,
+                        self.physics_solver.avg_speed, // Averages are now per-frame, so no division needed
+                        self.physics_solver.avg_brain_size,
+                        self.physics_solver.avg_sight_r,
+                        self.physics_solver.avg_pred,
+                        self.physics_solver.avg_thresh
+                    );
+                }
+                
+                // Reset averages for the next frame
+                self.physics_solver.reset_avgs();
+                // ---
     
+                // Original FPS counter logic
                 self.frame_count += 1;
                 let now = Instant::now();
                 if now.duration_since(self.last_fps_time).as_secs() >= 1 {
                     let fps = self.frame_count as f64
                         / now.duration_since(self.last_fps_time).as_secs_f64();
                     println!("FPS: {:.1}", fps);
-                     // Append num_cells and num_plants to CSV
-                    if let Ok(mut file) = OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open("simulation_data.csv")
-                    {
-                        // If the file is new (empty), write header
-                        if file.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
-                            let _ = writeln!(file, "time,num_cells,num_plants,avg_speed,avg_brain_size,avg_hunger,avg_isolation,avg_social,avg_sight_r");
-                        }
-                        let time_elapsed = self.last_fps_time.elapsed().as_secs();
-                        let _ = writeln!(
-                            file,
-                            "{},{},{},{},{},{},{},{},{}",
-                            time_elapsed,
-                            self.physics_solver.num_cells,
-                            self.physics_solver.num_plants,
-                            self.physics_solver.avg_speed / self.frame_count as f32,
-                            self.physics_solver.avg_brain_size / self.frame_count as f32,
-                            self.physics_solver.avg_hunger,
-                            self.physics_solver.avg_isolation,
-                            self.physics_solver.avg_social,
-                            self.physics_solver.avg_sight_r / self.frame_count as f32
-                        );
-                    }
                     self.frame_count = 0;
                     self.last_fps_time = now;
-                    self.physics_solver.reset_avgs(); // Reset averages for next frame
                 }
             }
 
@@ -199,6 +216,7 @@ impl ApplicationHandler for App {
             _ => {}
         }
     }
+
     
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {

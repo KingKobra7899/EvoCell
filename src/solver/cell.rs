@@ -1,3 +1,4 @@
+use core::num;
 // cell.rs - Fixed version
 use std::f32::consts::PI;
 
@@ -16,11 +17,12 @@ struct BrainExport {
     brain_size: i32,
     encoder_weights: Vec<f32>,
     encoder_bias: Vec<f32>,
-   decoder_weights: Vec<f32>,
+    decoder_weights: Vec<f32>,
 
     sight_r: f32,
     sight_a: f32,
     predation: f32,
+    birth_threshold: f32,
     adhesion: f32,
     max_speed: f32
 }
@@ -148,7 +150,7 @@ pub struct DirMovementEncoder {
 impl DirMovementEncoder {
     pub fn random (rng: &mut ThreadRng, brain_size: usize) -> Self {
         DirMovementEncoder{
-            encoder: EnvironmentalEncoder::random(76 + brain_size, brain_size, rng),
+            encoder: EnvironmentalEncoder::random(73 + brain_size, brain_size, rng),
             decoder: EnvironmentalEncoder::random(brain_size, 2, rng)
 
         }
@@ -256,6 +258,7 @@ pub struct Cell {
     pub hunger_decoder: CognitiveDecoder,
     pub isolation_decoder: CognitiveDecoder,
     pub Brain: DirMovementEncoder,
+    pub birth_threshold: f32,
     pub metabolic_rate: f32,
     pub current_mass: f32,
     pub max_mass: f32,
@@ -286,7 +289,7 @@ impl Cell {
             index,
             brain_size,
             current_energy: mass,
-            state_encoder: EnvironmentalEncoder::random((76 + brain_size) as usize, brain_size as usize, rng),
+            state_encoder: EnvironmentalEncoder::random((73 + brain_size) as usize, brain_size as usize, rng),
             social_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             hunger_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             isolation_decoder: CognitiveDecoder::random(brain_size as usize, rng),
@@ -304,6 +307,7 @@ impl Cell {
             desired_energy: mass,
             predation: predation_dist.sample(rng),
             adhesion: predation_dist.sample(rng),
+            birth_threshold: predation_dist.sample(rng),
             to_delete: false,
         }
     }
@@ -317,6 +321,7 @@ impl Cell {
         let mut child_pred = self.predation;
         let mut child_adhesion = self.adhesion;
         let mut child_max_speed = self.max_speed;
+        let mut child_thresh = self.birth_threshold;
         let mut brain_delta: i32 = 0;
 
         if world.rng.random_range(0.0..1.0) < (MUTATION_RATE) {
@@ -337,6 +342,11 @@ impl Cell {
             child_pred += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
+            child_thresh += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
+        }
+        
+
+        if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
             child_max_speed += world.rng.random_range(-0.01..0.01);
             child_max_speed = clamp(child_max_speed, 0.0, 50.0);
         }
@@ -347,14 +357,14 @@ impl Cell {
         }
 
         // Add child to pending additions instead of directly adding
-        world.pending_additions.push((child_pos, child_mass, brain_delta, child_brain_size, clamp(child_sight_r,0.0, 100.0), child_sight_a, child_pred, child_max_speed, child_adhesion, self.clone()));
+        world.pending_additions.push((child_pos, child_mass, brain_delta, child_brain_size, clamp(child_sight_r,0.0, 100.0), child_sight_a, child_pred, child_max_speed, child_adhesion, child_thresh,self.clone()));
     }
 
     pub fn encode_environment(&self, world: &PhysicsSolver) -> DMatrix<f32> {
         let pos: Vector2<f32> = world.positions[self.index];
         let vel: Vector2<f32> = world.positions[self.index] - world.old_positions[self.index];
         let point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
-        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 76) as usize, 1);
+        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 73) as usize, 1);
 
         for (i, &idx) in point_idx.iter().enumerate() {
             if i >= 20 { break; } // Limit to prevent overflow
@@ -368,32 +378,29 @@ impl Cell {
             full_env[(base + 2, 0)] = world.is_plant[idx as usize] as i32 as f32;
         }
 
-        full_env[60] = self.old_h;
-        full_env[61] = self.old_iso;
-        full_env[62] = self.old_soc;
-        full_env[63] = self.desired_energy - self.current_energy;
-        full_env[64] = self.metabolic_rate;
+        
+        full_env[60] = self.desired_energy - self.current_energy;
+        full_env[61] = self.metabolic_rate;
         let vel = world.positions[self.index] - world.old_positions[self.index];
 
-        full_env[65] = vel.x;
-        full_env[66] = vel.y;
-        full_env[67] = self.current_mass;
+        full_env[62] = vel.x;
+        full_env[63] = vel.y;
+        full_env[64] = self.current_mass;
         
-        let pos = world.positions[self.index];
 
         // Only include distance if edge is within sight radius, otherwise set to max
         let pos = world.positions[self.index];
 
-        full_env[68] = ((pos.y - (world.boundary.y - world.boundary.h)) / (2.0 * world.boundary.h)).min(1.0);
-        full_env[69] = (((world.boundary.y + world.boundary.h) - pos.y) / (2.0 * world.boundary.h)).min(1.0);
-        full_env[70] = ((pos.x - (world.boundary.x - world.boundary.w)) / (2.0 * world.boundary.w)).min(1.0);
-        full_env[71] = (((world.boundary.x + world.boundary.w) - pos.x) / (2.0 * world.boundary.w)).min(1.0);
+        full_env[65] = ((pos.y - (world.boundary.y - world.boundary.h)) / (2.0 * world.boundary.h)).min(1.0);
+        full_env[66] = (((world.boundary.y + world.boundary.h) - pos.y) / (2.0 * world.boundary.h)).min(1.0);
+        full_env[67] = ((pos.x - (world.boundary.x - world.boundary.w)) / (2.0 * world.boundary.w)).min(1.0);
+        full_env[68] = (((world.boundary.x + world.boundary.w) - pos.x) / (2.0 * world.boundary.w)).min(1.0);
 
 
-        full_env[72] = vel.magnitude();
-        full_env[73] = self.current_mass * vel.magnitude() * vel.magnitude();
-        full_env[74] = pos.x / world.boundary.w / 2.0;
-        full_env[75] = pos.y / world.boundary.h / 2.0;
+        full_env[69] = vel.magnitude();
+        full_env[70] = self.current_mass * vel.magnitude() * vel.magnitude();
+        full_env[71] = pos.x / world.boundary.w / 2.0;
+        full_env[72] = pos.y / world.boundary.h / 2.0;
         full_env
             .view_mut((self.brain_size as usize, 0), (self.brain_size as usize, 1))
             .copy_from(&self.old_encoding);
@@ -408,95 +415,155 @@ impl Cell {
     }
 
     pub fn timestep(&mut self, world: &mut PhysicsSolver) {
-        self.current_mass = world.masses[self.index]; // Sync mass with world
-        let internal_rep = self.encode_environment(world);
+        // Sync mass with world
+        self.current_mass = world.masses[self.index];
         
+        // Get environmental information and movement decision
+        let internal_rep = self.encode_environment(world);
         let movement_vec: Vector2<f32> = self.Brain.get_movement_vector(&internal_rep, self.max_speed);
-
-
+    
+        // Get current position and velocity for sight calculations
         let pos: Vector2<f32> = world.positions[self.index];
         let vel: Vector2<f32> = world.positions[self.index] - world.old_positions[self.index];
-        let point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
-
-        // Eating logic - mark particles for deletion instead of deleting immediately
-        let eating_range = world.radii[self.index] * 1.0;
-        let eating_points = world.qt.query(&Rect::new(pos.x, pos.y, world.radii[self.index] * 5.0, world.radii[self.index] * 5.0));
-
+        let _point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
+    
+        // ----- Eating Logic -----
+        let eating_range = world.radii[self.index];
+        let search_radius = world.radii[self.index] * 2.0; // More reasonable search radius
+        let eating_points = world.qt.query(&Rect::new(
+            pos.x - search_radius, 
+            pos.y - search_radius, 
+            search_radius * 2.0, 
+            search_radius * 2.0
+        ));
+    
         for &idx in &eating_points {
             if idx == self.index as i32 {
                 continue;
             }
-
+    
             let target_pos = world.positions[idx as usize];
             let distance = (pos - target_pos).magnitude();
-
-            if distance <= (eating_range + world.radii[idx as usize]) {
+            let contact_distance = eating_range + world.radii[idx as usize];
+    
+            if distance <= contact_distance {
                 let is_plant = world.is_plant[idx as usize];
-                let can_eat_animal = (self.predation > world.rng.random_range(0.0..1.0)) && !is_plant && self.current_mass > world.masses[idx as usize];
-
-                if (is_plant || can_eat_animal) && idx != self.index as i32 && world.masses[idx as usize] < self.current_mass * 4.0{
-                        let energy_gain = world.masses[idx as usize] *  if is_plant {10.0} else {20.0}; // 20x mass to energy conversion
-                        self.current_energy += energy_gain;
-                        //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
-                        
-                        // Mark for deletion instead of deleting immediately
-                        world.pending_deletions.push(idx as usize);
-                        break;
-                }
+                let target_mass = world.masses[idx as usize];
                 
+                // Can eat if it's a plant, or if predation succeeds and target is smaller
+                let can_eat_animal = !is_plant && 
+                                    (self.predation > world.rng.random_range(0.0..1.0)) && 
+                                    (self.current_mass > target_mass);
+                
+                // Prevent eating things that are too large relative to self
+                let size_constraint = target_mass < self.current_mass * 2.0;
+    
+                if (is_plant || can_eat_animal) && size_constraint {
+                    // Energy gain based on target's mass
+                    let energy_conversion_rate = if is_plant { 10.0 } else { 15.0 };
+                    let energy_gain = target_mass * energy_conversion_rate;
+                    
+                    self.current_energy += energy_gain;
+                    
+                    // Mark for deletion (avoid double-processing)
+                    world.pending_deletions.push(idx as usize);
+                    break; // Only eat one thing per timestep
+                }
             }
         }
-
-       
+    
+        // ----- Movement -----
         world.positions[self.index] += movement_vec;
-
-        // ----- Metabolic calculations -----
-        let basal_cost = 0.075 * f32::powf(self.current_mass, 0.75); // Kleiber's law
-        let brain_cost = 0.001* f32::powf(self.brain_size as f32, 0.86);
-        let move_cost = 0.1 * self.current_mass * movement_vec.magnitude().powi(2); // cost grows quadratically with acceleration
+    
+        // ----- Metabolic Calculations -----
+        // Basal metabolic rate using Kleiber's law (3/4 power scaling)
+        let basal_cost = 0.05 * self.current_mass.powf(0.75);
         
+        // Brain maintenance cost
+        let brain_cost = 0.002 * (self.brain_size as f32).powf(0.8);
+        
+        // Movement cost proportional to kinetic energy
+        let movement_magnitude = movement_vec.magnitude();
+        let move_cost = 0.08 * self.current_mass * movement_magnitude.powi(2);
         
         self.metabolic_rate = basal_cost + brain_cost + move_cost;
-        self.current_energy -= self.metabolic_rate * 1.5;
-
-        // ----- Energy ↔ Mass exchange -----
-        let starvation_threshold = self.desired_energy * 0.5;
+        self.current_energy -= self.metabolic_rate;
+    
+        // ----- Energy ↔ Mass Exchange -----
+        let starvation_threshold = self.desired_energy * 0.3;
+        let surplus_threshold = self.desired_energy * 1.2;
+        
         if self.current_energy < starvation_threshold {
-            // Burn mass for energy
-            let mass_loss = 0.002 * self.current_mass;
+            // Convert mass to energy when starving
+            let mass_conversion_rate = 0.001;
+            let mass_loss = mass_conversion_rate * self.current_mass;
+            let energy_per_mass = 25.0;
+            
             self.current_mass -= mass_loss;
-            self.current_energy += mass_loss * 20.0; // conversion rate from mass to energy
-        } else {
-            // Store surplus energy as mass
-            let storage = 0.001 * self.current_energy;
-            self.current_mass += storage;
-            self.current_energy -= storage;
+            self.current_energy += mass_loss * energy_per_mass;
+        } else if self.current_energy > surplus_threshold {
+            // Convert surplus energy to mass
+            let energy_conversion_rate = 0.0008;
+            let energy_to_convert = energy_conversion_rate * (self.current_energy - self.desired_energy);
+            let mass_per_energy = 1.0 / 25.0; // Inverse of energy_per_mass
+            
+            self.current_mass += energy_to_convert * mass_per_energy;
+            self.current_energy -= energy_to_convert;
         }
-
-        // Cap mass within bounds
-        if self.current_mass > self.max_mass {
-            self.current_mass = self.max_mass;
+    
+        // ----- Reproduction -----
+        if self.current_mass >= self.max_mass * self.birth_threshold && self.current_energy > self.desired_energy * self.birth_threshold {
             self.create_child(world);
-            self.current_energy *= 0.5; // post-reproduction energy loss
-            self.current_mass *= 0.5; // post-reproduction weight loss
+            
+            // Post-reproduction costs
+            self.current_energy *= 0.6;
+            self.current_mass *= 0.7;
+        }
+    
+        // Ensure mass stays within reasonable bounds
+        self.current_mass = self.current_mass.max(0.01).min(self.max_mass);
+        
+        // Sync mass back to world
+        world.masses[self.index] = self.current_mass;
+    
+        // ----- Update World Statistics -----
+        let num_cells_f32 = world.num_cells as f32;
+        world.avg_speed += self.max_speed / num_cells_f32;
+        world.avg_brain_size += self.brain_size as f32 / num_cells_f32;
+        
+        if self.predation.is_finite() {
+            world.avg_pred += self.predation / num_cells_f32;
+        }
+        if self.birth_threshold.is_finite() {
+            world.avg_thresh += self.birth_threshold / num_cells_f32;
+        }
+        // Only update averages if values are finite
+        if self.old_h.is_finite() {
+            world.avg_hunger += self.old_h / num_cells_f32;
+        }
+        if self.old_iso.is_finite() {
+            world.avg_isolation += self.old_iso / num_cells_f32;
+        }
+        if self.old_soc.is_finite() {
+            world.avg_social += self.old_soc / num_cells_f32;
         }
         
-        world.masses[self.index] = self.current_mass; // Sync mass back to world
-        world.avg_speed += self.max_speed / world.num_cells as f32;
-        world.avg_brain_size += self.brain_size as f32 / world.num_cells as f32;
-        world.avg_hunger +=if self.old_h.is_finite() {self.old_h / world.num_cells as f32} else {0.0};
-        world.avg_isolation += if self.old_iso.is_finite() {self.old_iso /world.num_cells as f32} else {0.0};
-        world.avg_social += if self.old_soc.is_finite() {self.old_soc / world.num_cells as f32} else {0.0};
-        world.avg_sight_r += self.sight_r / world.num_cells as f32;
-
-
-        // ----- Death conditions -----
-        let min_mass_for_survival = 0.05; // scaleable for realism
-        if self.current_energy <= 0.0 || self.current_mass <= min_mass_for_survival || world.positions[self.index].x.is_nan() || world.positions[self.index].y.is_nan() {
+        world.avg_sight_r += self.sight_r / num_cells_f32;
+    
+        // ----- Death Conditions -----
+        let min_mass_for_survival = 0.02;
+        let min_energy_for_survival = 0.0;
+        
+        let position_invalid = world.positions[self.index].x.is_nan() || 
+                              world.positions[self.index].y.is_nan() ||
+                              world.positions[self.index].x.is_infinite() ||
+                              world.positions[self.index].y.is_infinite();
+        
+        if self.current_energy <= min_energy_for_survival || 
+           self.current_mass <= min_mass_for_survival || 
+           position_invalid {
             self.to_delete = true;
-            return;
         }
-
     }
     pub fn export_brain(&self) -> BrainExport {
         BrainExport {
@@ -504,7 +571,7 @@ impl Cell {
             encoder_weights: self.Brain.encoder.weight_matrix.as_slice().to_vec(),
             encoder_bias: self.Brain.encoder.bias.as_slice().to_vec(),
             decoder_weights: self.Brain.decoder.weight_matrix.as_slice().to_vec(),
-           
+            birth_threshold: self.birth_threshold,
             adhesion: self.adhesion,
             sight_r: self.sight_r,
             sight_a: self.sight_a,
@@ -541,6 +608,7 @@ impl Clone for Cell {
             Brain: DirMovementEncoder { encoder: EnvironmentalEncoder::with_weights(self.Brain.encoder.weight_matrix.clone(), self.Brain.encoder.bias.clone()), 
                 decoder: EnvironmentalEncoder::with_weights(self.Brain.decoder.weight_matrix.clone(), self.Brain.decoder.bias.clone()) },
             metabolic_rate: self.metabolic_rate,
+            birth_threshold: self.birth_threshold,
             current_mass: self.current_mass,
             max_mass: self.max_mass,
             max_speed: self.max_speed,

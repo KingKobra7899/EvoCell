@@ -19,6 +19,7 @@ pub struct PhysicsSolver {
     pub radii: Vec<f32>,
     pub is_plant: Vec<bool>,
     pub spring_connections: Vec<Vector2<usize>>,
+    pub avg_thresh: f32,
     width: i32,
     height: i32,
     pub(crate) num_cells: i32,
@@ -34,8 +35,9 @@ pub struct PhysicsSolver {
     pub avg_social: f32,
     pub avg_sight_r: f32,
     pub num_particles: i32,
+    pub avg_pred: f32,
     pub pending_deletions: Vec<usize>, // New field for deferred deletions
-    pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
+    pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
 }
 
 impl PhysicsSolver {
@@ -51,10 +53,12 @@ impl PhysicsSolver {
             cells: Vec::new(),
             avg_speed: 0.0,
             avg_brain_size: 0.0,
+            avg_thresh: 0.0,
             avg_hunger: 0.0,
             avg_isolation: 0.0,
             avg_social: 0.0,
             avg_sight_r: 0.0,
+            avg_pred: 0.0,
             cell_indices: Vec::new(),
             plants: Vec::new(),
             is_plant: Vec::new(),
@@ -77,6 +81,8 @@ impl PhysicsSolver {
         self.avg_isolation = 0.0;
         self.avg_social = 0.0;
         self.avg_sight_r = 0.0;
+        self.avg_pred = 0.0;
+        self.avg_thresh = 0.0;
     }
 
     pub fn add_particle_grid(
@@ -345,33 +351,59 @@ impl PhysicsSolver {
     pub fn apply_rect_constraint(&mut self, rectangle: Rect) {
         let buffer = 20.0;
         let expanded_rect = Rect::new(rectangle.x, rectangle.y, rectangle.w + buffer, rectangle.h + buffer);
-
+        let push_force = 500.0; // Adjust this value to control push strength
+    
+        let mut forces_to_apply = Vec::new();
+    
         for i in self.qt.query(&expanded_rect) {
             let pos = &mut self.positions[i as usize];
-            
             let r = self.radii[i as usize];
-
+    
             let y_top = rectangle.y - rectangle.h;
             let y_bottom = rectangle.y + rectangle.h;
             let x_left = rectangle.x - rectangle.w;
             let x_right = rectangle.x + rectangle.w;
-
+    
+            // Top boundary
             if pos.y - r < y_top {
                 pos.y = y_top + r;
-                self.pending_deletions.push(i as usize);
-
+                if self.rng.random_range(0.0..1.0) < 0.01 {
+                    self.pending_deletions.push(i as usize);
+                } else {
+                    forces_to_apply.push((i as usize, Vector2::new(0.0, push_force)));
+                }
+            // Bottom boundary
             } else if pos.y + r > y_bottom {
                 pos.y = y_bottom - r;
-                self.pending_deletions.push(i as usize);
+                if self.rng.random_range(0.0..1.0) < 0.01 {
+                    self.pending_deletions.push(i as usize);
+                } else {
+                    forces_to_apply.push((i as usize, Vector2::new(0.0, -push_force)));
+                }
             }
-
+    
+            // Left boundary
             if pos.x - r < x_left {
                 pos.x = x_left + r;
-                self.pending_deletions.push(i as usize);
+                if self.rng.random_range(0.0..1.0) < 0.01 {
+                    self.pending_deletions.push(i as usize);
+                } else {
+                    forces_to_apply.push((i as usize, Vector2::new(push_force, 0.0)));
+                }
+            // Right boundary
             } else if pos.x + r > x_right {
                 pos.x = x_right - r;
-                self.pending_deletions.push(i as usize);
+                if self.rng.random_range(0.0..1.0) < 0.01 {
+                    self.pending_deletions.push(i as usize);
+                } else {
+                    forces_to_apply.push((i as usize, Vector2::new(-push_force, 0.0)));
+                }
             }
+        }
+    
+        // Apply all forces after the loop to avoid borrow conflicts
+        for (index, force) in forces_to_apply {
+            self.accelerate_particle(index, force);
         }
     }
 
@@ -465,7 +497,7 @@ for index in deletions_to_process {
     }
 
     fn process_additions(&mut self) {
-        for (child_pos, child_mass, brain_delta, child_brain_size, child_sight_r, child_sight_a, child_pred, child_max_speed,child_adhesion, parent_cell) in self.pending_additions.drain(..) {
+        for (child_pos, child_mass, brain_delta, child_brain_size, child_sight_r, child_sight_a, child_pred, child_max_speed,child_adhesion, child_thresh, parent_cell) in self.pending_additions.drain(..) {
             
             let child_index = self.num_particles as usize;
             
@@ -484,8 +516,8 @@ for index in deletions_to_process {
             let input_size = (65 + safe_child_brain_size) as usize;
             
             // Create child cell based on brain_delta
-            let child_cell = if brain_delta == 0 {
-                Cell {
+            
+            let child_cell = Cell {
                     index: child_index,
                     brain_size: safe_child_brain_size,
                     current_energy: child_mass,
@@ -496,6 +528,7 @@ for index in deletions_to_process {
                     isolation_decoder: parent_cell.isolation_decoder.mutate(&mut self.rng),
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 4.0,
+                    birth_threshold: child_thresh,
                     max_mass: child_mass,
                     max_speed: child_max_speed,
                     old_h: 0.0,
@@ -509,102 +542,7 @@ for index in deletions_to_process {
                     desired_energy: child_mass,
                     predation: child_pred,
                     to_delete: false,
-                }
-            } else if brain_delta > 0 {
-                let brain_add = brain_delta as usize;
-                
-                // Create new encoders with proper dimensions
-                let child_se = parent_cell.state_encoder.add_neurons(&mut self.rng, brain_add).mutate(&mut self.rng);
-                let child_sd = parent_cell.social_decoder.add_neurons(&mut self.rng, brain_add).mutate(&mut self.rng);
-                let child_hd = parent_cell.hunger_decoder.add_neurons(&mut self.rng, brain_add).mutate(&mut self.rng);
-                let child_id = parent_cell.isolation_decoder.add_neurons(&mut self.rng, brain_add).mutate(&mut self.rng);
-                
-                // Create new Brain encoder with updated input size
-                let child_brain = cell::DirMovementEncoder::random(&mut self.rng, safe_child_brain_size as usize);
-    
-                Cell {
-                    index: child_index,
-                    brain_size: safe_child_brain_size,
-                    current_energy: child_mass,
-                    state_encoder: child_se,
-                    social_decoder: child_sd,
-                    adhesion: child_adhesion,
-                    hunger_decoder: child_hd,
-                    isolation_decoder: child_id,
-                    Brain: child_brain, // Use new brain instead of mutated parent
-                    old_h: 0.0,
-                    old_iso: 0.0,
-                    old_soc: 0.0,
-                    old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
-                    metabolic_rate: 0.0,
-                    current_mass: child_mass / 2.0,
-                    max_mass: child_mass,
-                    max_speed: child_max_speed,
-                    sight_r: child_sight_r,
-                    sight_a: child_sight_a,
-                    desired_energy: child_mass,
-                    predation: child_pred,
-                    to_delete: false,
-                }
-            } else {
-                let brain_remove = (-brain_delta) as usize;
-                
-                // Ensure we don't remove more neurons than available
-                let parent_brain_size = parent_cell.brain_size as usize;
-                let actual_remove = brain_remove.min(parent_brain_size.saturating_sub(1));
-                
-                if actual_remove >= parent_brain_size {
-                    // If we would remove too many neurons, create a minimal brain instead
-                    let minimal_cell = Cell::random(&mut self.rng, child_mass, child_index);
-                    self.cells.push(Cell {
-                        index: child_index,
-                        brain_size: 1, // Minimal brain size
-                        current_mass: child_mass / 2.0,
-                        max_mass: child_mass,
-                        max_speed: child_max_speed,
-                        adhesion: child_adhesion,
-                        sight_r: child_sight_r,
-                        sight_a: child_sight_a,
-                        predation: child_pred,
-                        ..minimal_cell
-                    });
-                    self.cell_indices.push(child_index);
-                    continue;
-                }
-                
-                let child_se = parent_cell.state_encoder.remove_neurons(&mut self.rng, actual_remove).mutate(&mut self.rng);
-                let child_sd = parent_cell.social_decoder.remove_neurons(&mut self.rng, actual_remove).mutate(&mut self.rng);
-                let child_hd = parent_cell.hunger_decoder.remove_neurons(&mut self.rng, actual_remove).mutate(&mut self.rng);
-                let child_id = parent_cell.isolation_decoder.remove_neurons(&mut self.rng, actual_remove).mutate(&mut self.rng);
-                
-                // Create new Brain encoder with updated input size
-                let child_brain = cell::DirMovementEncoder::random(&mut self.rng, safe_child_brain_size as usize);
-    
-                Cell {
-                    index: child_index,
-                    brain_size: safe_child_brain_size,
-                    Brain: child_brain, // Use new brain instead of mutated parent
-                    current_energy: child_mass,
-                    state_encoder: child_se,
-                    social_decoder: child_sd,
-                    hunger_decoder: child_hd,
-                    isolation_decoder: child_id,
-                    adhesion: child_adhesion,
-                    metabolic_rate: 0.0,
-                    current_mass: child_mass / 2.0,
-                    max_mass: child_mass,
-                    max_speed: child_max_speed,
-                    sight_r: child_sight_r,
-                    sight_a: child_sight_a,
-                    old_h: 0.0,
-                    old_iso: 0.0,
-                    old_soc: 0.0,
-                    old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
-                    desired_energy: child_mass,
-                    predation: child_pred,
-                    to_delete: false,
-                }
-            };
+                };
     
             self.cells.push(child_cell);
             self.cell_indices.push(child_index);
@@ -626,7 +564,7 @@ for index in deletions_to_process {
 
     pub fn init_world(&mut self, num_entities: usize, plant_ratio: f32) {
         let points = Poisson2D::new()
-            .with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 30.0)
+            .with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 15.0)
             .iter()
             .take(num_entities);
         
@@ -689,7 +627,7 @@ for index in deletions_to_process {
             self.random_spawn_plant();
         }
         if self.num_cells == 0 {
-            self.init_world(100, 0.0);
+            //self.init_world(100, 0.0);
         }
     }
 
