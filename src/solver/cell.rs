@@ -1,6 +1,6 @@
 use core::num;
 // cell.rs - Fixed version
-use std::f32::consts::PI;
+use std::{cmp::min, f32::consts::PI};
 
 use nalgebra::{clamp, DMatrix, DVector, Vector2, VectorN};
 use rand::{random_range, rngs::ThreadRng, seq::SliceRandom as _, Rng};
@@ -307,7 +307,7 @@ impl Cell {
             desired_energy: mass,
             predation: predation_dist.sample(rng),
             adhesion: predation_dist.sample(rng),
-            birth_threshold: clamp(predation_dist.sample(rng) + 0.25, 0.5, 1.0),
+            birth_threshold: clamp(predation_dist.sample(rng) + 0.25, 0.5, 2.0),
             to_delete: false,
         }
     }
@@ -429,7 +429,7 @@ impl Cell {
     
         // ----- Eating Logic -----
         let eating_range = world.radii[self.index];
-        let search_radius = world.radii[self.index] * 2.0; // More reasonable search radius
+        let search_radius = self.sight_r; // More reasonable search radius
         let eating_points = world.qt.query(&Rect::new(
             pos.x - search_radius, 
             pos.y - search_radius, 
@@ -456,7 +456,7 @@ impl Cell {
                                     (self.current_mass > target_mass);
                 
                 // Prevent eating things that are too large relative to self
-                let size_constraint = target_mass < self.current_mass * 2.0;
+                let size_constraint = target_mass < self.current_mass * 3.0;
     
                 if (is_plant || can_eat_animal) && size_constraint {
                     // Energy gain based on target's mass
@@ -516,8 +516,8 @@ impl Cell {
             self.create_child(world);
             
             // Post-reproduction costs
-            self.current_energy *= self.birth_threshold;
-            self.current_mass *= self.birth_threshold;
+            self.current_energy -=  self.desired_energy * 0.5;
+            self.current_mass -= self.max_mass * 0.5;
         }
     
         // Ensure mass stays within reasonable bounds

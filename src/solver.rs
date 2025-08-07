@@ -1,7 +1,7 @@
 // solver.rs - Fixed version with deferred deletion system
 use core::num;
 use fast_poisson::Poisson2D;
-use nalgebra::Vector2;
+use nalgebra::{clamp, Vector2};
 use rand::{rng, rngs::ThreadRng, seq::index, Rng};
 mod quadtree;
 use quadtree::{QuadTree, Rect};
@@ -528,7 +528,7 @@ for index in deletions_to_process {
                     isolation_decoder: parent_cell.isolation_decoder.mutate(&mut self.rng),
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 4.0,
-                    birth_threshold: child_thresh,
+                    birth_threshold: clamp(child_thresh, 0.5, 2.0),
                     max_mass: child_mass,
                     max_speed: child_max_speed,
                     old_h: 0.0,
@@ -540,7 +540,7 @@ for index in deletions_to_process {
                     sight_r: child_sight_r,
                     sight_a: child_sight_a,
                     desired_energy: child_mass,
-                    predation: child_pred,
+                    predation: clamp(child_pred, 0.0, 1.0),
                     to_delete: false,
                 };
     
