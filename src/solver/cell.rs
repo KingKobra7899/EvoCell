@@ -1,16 +1,14 @@
-use core::num;
 // cell.rs - Fixed version
-use std::{cmp::min, f32::consts::PI};
+use std::f32::consts::PI;
 
-use nalgebra::{clamp, DMatrix, DVector, Vector2, VectorN};
-use rand::{random_range, rngs::ThreadRng, seq::SliceRandom as _, Rng};
+use nalgebra::{clamp, DMatrix, DVector, Vector2};
+use rand::{rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
-use nalgebra_glm as glm;
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
 const MUTATION_RATE: f64 = 0.75;
 
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 
 #[derive(Serialize)]
 struct BrainExport {
@@ -322,7 +320,7 @@ impl Cell {
         let mut child_adhesion = self.adhesion;
         let mut child_max_speed = self.max_speed;
         let mut child_thresh = self.birth_threshold;
-        let mut brain_delta: i32 = 0;
+        let brain_delta: i32 = 0;
 
         if world.rng.random_range(0.0..1.0) < (MUTATION_RATE) {
             //brain_delta = world.rng.random_range(-2..2);

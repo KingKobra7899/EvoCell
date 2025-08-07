@@ -1,8 +1,7 @@
 // solver.rs - Fixed version with deferred deletion system
-use core::num;
 use fast_poisson::Poisson2D;
 use nalgebra::{clamp, Vector2};
-use rand::{rng, rngs::ThreadRng, seq::index, Rng};
+use rand::{rngs::ThreadRng, Rng};
 mod quadtree;
 use quadtree::{QuadTree, Rect};
 mod cell;
@@ -547,7 +546,7 @@ for index in deletions_to_process {
             self.cells.push(child_cell);
             self.cell_indices.push(child_index);
 
-            if(self.rng.random_range(0.0..1.0) < parent_cell.adhesion) {
+            if self.rng.random_range(0.0..1.0) < parent_cell.adhesion {
                 self.spring_connections.push(Vector2::new(parent_cell.index, child_index));
             }
         }
@@ -632,7 +631,7 @@ for index in deletions_to_process {
     }
 
     pub fn save_random_creature(&mut self) {
-        let mut index = self.rng.random_range(0..self.num_cells as usize);
+        let index = self.rng.random_range(0..self.num_cells as usize);
         let cell = &self.cells[index];
         cell.save_brain_to_file("brain.json").expect("Failed to save brain");
     }
