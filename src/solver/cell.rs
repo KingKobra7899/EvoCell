@@ -7,7 +7,7 @@ use rand_distr::{Normal, Distribution};
 use nalgebra_glm as glm;
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.1;
+const MUTATION_RATE: f64 = 0.75;
 
 use serde::{Serialize, Deserialize};
 
@@ -17,7 +17,7 @@ struct BrainExport {
     encoder_weights: Vec<f32>,
     encoder_bias: Vec<f32>,
    decoder_weights: Vec<f32>,
-    decoder_bias: Vec<f32>,
+
     sight_r: f32,
     sight_a: f32,
     predation: f32,
@@ -163,7 +163,7 @@ impl DirMovementEncoder {
     }
 
     pub fn get_movement_vector(&self, input: &DMatrix<f32>, max_speed: f32) -> Vector2<f32> {
-        let base_output = self.decoder.encode(&self.encoder.encode(&input));
+        let base_output = self.decoder.encode(&self.encoder.encode(&input)) - self.decoder.bias.clone();
         let mut norm_output: Vector2<f32> = Vector2::new(base_output[0], base_output[1]);
         norm_output.x = max_speed * (norm_output.x);
         norm_output.y = max_speed * (norm_output.y);
@@ -280,7 +280,7 @@ impl Cell {
         let predation_dist: Normal<f32> = Normal::new(0.5, 0.2).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
-        let max_speed = rng.random_range(0.0..0.15);
+        let max_speed = rng.random_range(0.1..0.5);
 
         Cell {
             index,
@@ -319,15 +319,15 @@ impl Cell {
         let mut child_max_speed = self.max_speed;
         let mut brain_delta: i32 = 0;
 
-        if world.rng.random_range(0.0..1.0) < (MUTATION_RATE / 2.0) {
-            //brain_delta = world.rng.random_range(-1..1);
+        if world.rng.random_range(0.0..1.0) < (MUTATION_RATE) {
+            //brain_delta = world.rng.random_range(-2..2);
             child_brain_size += brain_delta;
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
             child_mass += clamp(world.rng.random_range(-1..1) as f32, 5.0, 100.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_sight_r += world.rng.random_range(-0.1..0.1) as f32;
+            child_sight_r += world.rng.random_range(-2.0..2.0) as f32;
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
             child_sight_a += world.rng.random_range(-0.05..0.05) as f32;
@@ -337,7 +337,7 @@ impl Cell {
             child_pred += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_max_speed += world.rng.random_range(-1.0..1.0);
+            child_max_speed += world.rng.random_range(-0.01..0.01);
             child_max_speed = clamp(child_max_speed, 0.0, 50.0);
         }
 
@@ -393,6 +393,7 @@ impl Cell {
         full_env[72] = vel.magnitude();
         full_env[73] = self.current_mass * vel.magnitude() * vel.magnitude();
         full_env[74] = pos.x / world.boundary.w / 2.0;
+        full_env[75] = pos.y / world.boundary.h / 2.0;
         full_env
             .view_mut((self.brain_size as usize, 0), (self.brain_size as usize, 1))
             .copy_from(&self.old_encoding);
@@ -431,10 +432,10 @@ impl Cell {
 
             if distance <= (eating_range + world.radii[idx as usize]) {
                 let is_plant = world.is_plant[idx as usize];
-                let can_eat_animal = self.predation > 0.5 && !is_plant;
+                let can_eat_animal = (self.predation > world.rng.random_range(0.0..1.0)) && !is_plant && self.current_mass > world.masses[idx as usize];
 
                 if (is_plant || can_eat_animal) && idx != self.index as i32 && world.masses[idx as usize] < self.current_mass * 4.0{
-                        let energy_gain = world.masses[idx as usize] * 20.0; // 20x mass to energy conversion
+                        let energy_gain = world.masses[idx as usize] *  if is_plant {10.0} else {20.0}; // 20x mass to energy conversion
                         self.current_energy += energy_gain;
                         //println!("Cell {} ate {} at distance {}", self.index, idx, distance);
                         
@@ -503,7 +504,7 @@ impl Cell {
             encoder_weights: self.Brain.encoder.weight_matrix.as_slice().to_vec(),
             encoder_bias: self.Brain.encoder.bias.as_slice().to_vec(),
             decoder_weights: self.Brain.decoder.weight_matrix.as_slice().to_vec(),
-            decoder_bias: self.Brain.decoder.bias.as_slice().to_vec(),
+           
             adhesion: self.adhesion,
             sight_r: self.sight_r,
             sight_a: self.sight_a,

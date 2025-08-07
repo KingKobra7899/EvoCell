@@ -31,7 +31,7 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.init_world(2500, 0.95);
+        physics_solver.init_world(2500, 0.99);
         
         Self {
             window: None,
@@ -90,7 +90,7 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.window.is_none() {
             let window_attributes = Window::default_attributes()
-                .with_title("WGPU Physics Simulation (Per-Pixel)")
+                .with_title("")
                 .with_inner_size(winit::dpi::PhysicalSize::new(WIDTH as u32, HEIGHT as u32));
 
             let window = event_loop
@@ -163,12 +163,12 @@ impl ApplicationHandler for App {
                             time_elapsed,
                             self.physics_solver.num_cells,
                             self.physics_solver.num_plants,
-                            self.physics_solver.avg_speed,
-                            self.physics_solver.avg_brain_size,
+                            self.physics_solver.avg_speed / self.frame_count as f32,
+                            self.physics_solver.avg_brain_size / self.frame_count as f32,
                             self.physics_solver.avg_hunger,
                             self.physics_solver.avg_isolation,
                             self.physics_solver.avg_social,
-                            self.physics_solver.avg_sight_r
+                            self.physics_solver.avg_sight_r / self.frame_count as f32
                         );
                     }
                     self.frame_count = 0;

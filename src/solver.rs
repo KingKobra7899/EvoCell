@@ -683,7 +683,7 @@ for index in deletions_to_process {
         }
 
         let base_rate = 0.01;
-        let growth_probability = base_rate * (self.num_plants as f32); // or use linear: base_rate * self.num_cells as f32
+        let growth_probability = (base_rate * (self.num_plants as f32)).sqrt(); // or use linear: base_rate * self.num_cells as f32
         if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells > 0 {
             self.random_spawn_plant();
             self.random_spawn_plant();
