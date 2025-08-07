@@ -16,12 +16,12 @@ struct BrainExport {
     brain_size: i32,
     encoder_weights: Vec<f32>,
     encoder_bias: Vec<f32>,
-    social_weights: Vec<f32>,
-    hunger_weights: Vec<f32>,
-    isolation_weights: Vec<f32>,
+   decoder_weights: Vec<f32>,
+    decoder_bias: Vec<f32>,
     sight_r: f32,
     sight_a: f32,
     predation: f32,
+    adhesion: f32,
     max_speed: f32
 }
 
@@ -148,7 +148,7 @@ pub struct DirMovementEncoder {
 impl DirMovementEncoder {
     pub fn random (rng: &mut ThreadRng, brain_size: usize) -> Self {
         DirMovementEncoder{
-            encoder: EnvironmentalEncoder::random(65 + brain_size, brain_size, rng),
+            encoder: EnvironmentalEncoder::random(76 + brain_size, brain_size, rng),
             decoder: EnvironmentalEncoder::random(brain_size, 2, rng)
 
         }
@@ -286,7 +286,7 @@ impl Cell {
             index,
             brain_size,
             current_energy: mass,
-            state_encoder: EnvironmentalEncoder::random((65 + brain_size) as usize, brain_size as usize, rng),
+            state_encoder: EnvironmentalEncoder::random((76 + brain_size) as usize, brain_size as usize, rng),
             social_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             hunger_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             isolation_decoder: CognitiveDecoder::random(brain_size as usize, rng),
@@ -302,7 +302,7 @@ impl Cell {
             sight_r: sight_r_dist.sample(rng),
             sight_a: sight_angle_dist.sample(rng),
             desired_energy: mass,
-            predation: 0.0,
+            predation: predation_dist.sample(rng),
             adhesion: predation_dist.sample(rng),
             to_delete: false,
         }
@@ -354,7 +354,7 @@ impl Cell {
         let pos: Vector2<f32> = world.positions[self.index];
         let vel: Vector2<f32> = world.positions[self.index] - world.old_positions[self.index];
         let point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
-        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 65) as usize, 1);
+        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 76) as usize, 1);
 
         for (i, &idx) in point_idx.iter().enumerate() {
             if i >= 20 { break; } // Limit to prevent overflow
@@ -373,7 +373,26 @@ impl Cell {
         full_env[62] = self.old_soc;
         full_env[63] = self.desired_energy - self.current_energy;
         full_env[64] = self.metabolic_rate;
+        let vel = world.positions[self.index] - world.old_positions[self.index];
 
+        full_env[65] = vel.x;
+        full_env[66] = vel.y;
+        full_env[67] = self.current_mass;
+        
+        let pos = world.positions[self.index];
+
+        // Only include distance if edge is within sight radius, otherwise set to max
+        let pos = world.positions[self.index];
+
+        full_env[68] = ((pos.y - (world.boundary.y - world.boundary.h)) / (2.0 * world.boundary.h)).min(1.0);
+        full_env[69] = (((world.boundary.y + world.boundary.h) - pos.y) / (2.0 * world.boundary.h)).min(1.0);
+        full_env[70] = ((pos.x - (world.boundary.x - world.boundary.w)) / (2.0 * world.boundary.w)).min(1.0);
+        full_env[71] = (((world.boundary.x + world.boundary.w) - pos.x) / (2.0 * world.boundary.w)).min(1.0);
+
+
+        full_env[72] = vel.magnitude();
+        full_env[73] = self.current_mass * vel.magnitude() * vel.magnitude();
+        full_env[74] = pos.x / world.boundary.w / 2.0;
         full_env
             .view_mut((self.brain_size as usize, 0), (self.brain_size as usize, 1))
             .copy_from(&self.old_encoding);
@@ -431,12 +450,13 @@ impl Cell {
         world.positions[self.index] += movement_vec;
 
         // ----- Metabolic calculations -----
-        let basal_cost = 0.1 * f32::powf(self.current_mass, 0.75); // Kleiber's law
+        let basal_cost = 0.075 * f32::powf(self.current_mass, 0.75); // Kleiber's law
         let brain_cost = 0.001* f32::powf(self.brain_size as f32, 0.86);
         let move_cost = 0.1 * self.current_mass * movement_vec.magnitude().powi(2); // cost grows quadratically with acceleration
-       
+        
+        
         self.metabolic_rate = basal_cost + brain_cost + move_cost;
-        self.current_energy -= self.metabolic_rate;
+        self.current_energy -= self.metabolic_rate * 1.5;
 
         // ----- Energy ↔ Mass exchange -----
         let starvation_threshold = self.desired_energy * 0.5;
@@ -480,11 +500,11 @@ impl Cell {
     pub fn export_brain(&self) -> BrainExport {
         BrainExport {
             brain_size: self.brain_size,
-            encoder_weights: self.state_encoder.weight_matrix.as_slice().to_vec(),
-            encoder_bias: self.state_encoder.bias.as_slice().to_vec(),
-            social_weights: self.social_decoder.weights.as_slice().to_vec(),
-            hunger_weights: self.hunger_decoder.weights.as_slice().to_vec(),
-            isolation_weights: self.isolation_decoder.weights.as_slice().to_vec(),
+            encoder_weights: self.Brain.encoder.weight_matrix.as_slice().to_vec(),
+            encoder_bias: self.Brain.encoder.bias.as_slice().to_vec(),
+            decoder_weights: self.Brain.decoder.weight_matrix.as_slice().to_vec(),
+            decoder_bias: self.Brain.decoder.bias.as_slice().to_vec(),
+            adhesion: self.adhesion,
             sight_r: self.sight_r,
             sight_a: self.sight_a,
             predation: self.predation,

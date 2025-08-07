@@ -358,16 +358,19 @@ impl PhysicsSolver {
 
             if pos.y - r < y_top {
                 pos.y = y_top + r;
-                self.masses[i as usize] = self.masses[i as usize] * 0.99;
+                self.pending_deletions.push(i as usize);
 
             } else if pos.y + r > y_bottom {
                 pos.y = y_bottom - r;
+                self.pending_deletions.push(i as usize);
             }
 
             if pos.x - r < x_left {
                 pos.x = x_left + r;
+                self.pending_deletions.push(i as usize);
             } else if pos.x + r > x_right {
                 pos.x = x_right - r;
+                self.pending_deletions.push(i as usize);
             }
         }
     }
@@ -679,9 +682,10 @@ for index in deletions_to_process {
             //self.apply_springs(0.0);
         }
 
-        let base_rate = 0.1;
+        let base_rate = 0.01;
         let growth_probability = base_rate * (self.num_plants as f32); // or use linear: base_rate * self.num_cells as f32
         if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells > 0 {
+            self.random_spawn_plant();
             self.random_spawn_plant();
         }
         if self.num_cells == 0 {

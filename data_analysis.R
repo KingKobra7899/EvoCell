@@ -16,3 +16,19 @@ simulation_data$avg_drive <- apply(
     c("hunger", "social", "isolation")[which.max(x)]
   }
 )
+
+
+ggplot(simulation_data, aes(x = seconds)) +
+  geom_line(aes(y = num_cells, color = "Cells"), size = 1.2) +
+  geom_line(aes(y = num_plants, color = "Plants"), size = 1.2) +
+  scale_color_manual(values = c("Cells" = "#2E86AB", "Plants" = "#A23B72")) +
+  labs(x = "Time (seconds)", y = "Count", color = "") +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "top",
+    plot.background = element_rect(fill = "white", color = NA),
+    text = element_text(family = "Arial", color = "#2c3e50"),
+    axis.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  )
