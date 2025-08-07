@@ -350,7 +350,7 @@ impl PhysicsSolver {
     pub fn apply_rect_constraint(&mut self, rectangle: Rect) {
         let buffer = 20.0;
         let expanded_rect = Rect::new(rectangle.x, rectangle.y, rectangle.w + buffer, rectangle.h + buffer);
-        let push_force = 500.0; // Adjust this value to control push strength
+        let push_force = 5000.0; // Adjust this value to control push strength
     
         let mut forces_to_apply = Vec::new();
     
@@ -366,7 +366,7 @@ impl PhysicsSolver {
             // Top boundary
             if pos.y - r < y_top {
                 pos.y = y_top + r;
-                if self.rng.random_range(0.0..1.0) < 0.01 {
+                if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
                     forces_to_apply.push((i as usize, Vector2::new(0.0, push_force)));
@@ -374,7 +374,7 @@ impl PhysicsSolver {
             // Bottom boundary
             } else if pos.y + r > y_bottom {
                 pos.y = y_bottom - r;
-                if self.rng.random_range(0.0..1.0) < 0.01 {
+                if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
                     forces_to_apply.push((i as usize, Vector2::new(0.0, -push_force)));
@@ -384,7 +384,7 @@ impl PhysicsSolver {
             // Left boundary
             if pos.x - r < x_left {
                 pos.x = x_left + r;
-                if self.rng.random_range(0.0..1.0) < 0.01 {
+                if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
                     forces_to_apply.push((i as usize, Vector2::new(push_force, 0.0)));
@@ -392,7 +392,7 @@ impl PhysicsSolver {
             // Right boundary
             } else if pos.x + r > x_right {
                 pos.x = x_right - r;
-                if self.rng.random_range(0.0..1.0) < 0.01 {
+                if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
                     forces_to_apply.push((i as usize, Vector2::new(-push_force, 0.0)));
@@ -527,7 +527,7 @@ for index in deletions_to_process {
                     isolation_decoder: parent_cell.isolation_decoder.mutate(&mut self.rng),
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 4.0,
-                    birth_threshold: clamp(child_thresh, 0.5, 2.0),
+                    birth_threshold: clamp(child_thresh, 0.5, 1.0),
                     max_mass: child_mass,
                     max_speed: child_max_speed,
                     old_h: 0.0,
@@ -563,7 +563,7 @@ for index in deletions_to_process {
 
     pub fn init_world(&mut self, num_entities: usize, plant_ratio: f32) {
         let points = Poisson2D::new()
-            .with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 15.0)
+            .with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 30.0)
             .iter()
             .take(num_entities);
         
@@ -621,12 +621,12 @@ for index in deletions_to_process {
 
         let base_rate = 0.01;
         let growth_probability = (base_rate * (self.num_plants as f32)).sqrt(); // or use linear: base_rate * self.num_cells as f32
-        if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells > 0 {
+        if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells < 100 {
             self.random_spawn_plant();
             self.random_spawn_plant();
         }
         if self.num_cells == 0 {
-            //self.init_world(100, 0.0);
+            self.init_world(10, 0.0);
         }
     }
 

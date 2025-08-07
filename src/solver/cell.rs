@@ -281,7 +281,7 @@ impl Cell {
         let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
-        let max_speed = rng.random_range(0.1..0.5);
+        let max_speed = rng.random_range(0.1..0.2);
 
         Cell {
             index,
@@ -305,7 +305,7 @@ impl Cell {
             desired_energy: mass,
             predation: predation_dist.sample(rng),
             adhesion: predation_dist.sample(rng),
-            birth_threshold: clamp(predation_dist.sample(rng) + 0.25, 0.5, 2.0),
+            birth_threshold: clamp(predation_dist.sample(rng) + 0.25, 0.5, 1.0),
             to_delete: false,
         }
     }
@@ -475,20 +475,20 @@ impl Cell {
     
         // ----- Metabolic Calculations -----
         // Basal metabolic rate using Kleiber's law (3/4 power scaling)
-        let basal_cost = 0.05 * self.current_mass.powf(0.75);
+        let basal_cost = 0.01 * self.current_mass.powf(0.75);
         
         // Brain maintenance cost
         let brain_cost = 0.002 * (self.brain_size as f32).powf(0.8);
         
         // Movement cost proportional to kinetic energy
         let movement_magnitude = movement_vec.magnitude();
-        let move_cost = 0.08 * self.current_mass * movement_magnitude.powi(2);
+        //let move_cost = 0.02 * self.current_mass * movement_magnitude.powi(2);
         
-        self.metabolic_rate = basal_cost + brain_cost + move_cost;
+        self.metabolic_rate = basal_cost + brain_cost;
         self.current_energy -= self.metabolic_rate;
     
         // ----- Energy ↔ Mass Exchange -----
-        let starvation_threshold = self.desired_energy * 0.3;
+        let starvation_threshold = self.desired_energy * 0.1;
         let surplus_threshold = self.desired_energy * 1.2;
         
         if self.current_energy < starvation_threshold {
