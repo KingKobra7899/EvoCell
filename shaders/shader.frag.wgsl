@@ -17,42 +17,43 @@ struct FragmentInput {
     @builtin(position) frag_coord: vec4<f32>,
 };
 
+// Gamma correction for publication-quality colors
 fn gamma_correct(color: vec3<f32>) -> vec3<f32> {
     return pow(color, vec3<f32>(1.0 / 2.2));
 }
 
-// Simple distance-based falloff for clean circular particles
+// Crisp edge falloff for circles
 fn circle_falloff(dist: f32, radius: f32) -> f32 {
     let norm_dist = dist / radius;
-    return 1.0 - smoothstep(0.8, 1.0, norm_dist);
+    // Sharper than default smoothstep for cleaner edge
+    return 1.0 - smoothstep(0.94, 1.0, norm_dist);
 }
 
 @fragment
 fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     let pixel_coord = in.frag_coord.xy;
-    
-    var final_color = vec3<f32>(0.05, 0.05, 0.08); // Dark background
-    
+
+    // White background for light theme
+    var final_color = vec3<f32>(1.0, 1.0, 1.0);
+
     for (var i: u32 = 0u; i < num_particles_uniform; i = i + 1u) {
         let p = particles[i];
         let dist = length(pixel_coord - p.position);
-        
+
         if (dist < p.radius) {
             let falloff = circle_falloff(dist, p.radius);
-            
-            if (p.is_plant == 1u) {
-                // Producer organisms - green with subtle center highlight
-                let center_intensity = 1.0 - (dist / p.radius) * 0.3;
-                let base_color = vec3<f32>(0.2, 0.7, 0.3) * center_intensity;
-                final_color = mix(final_color, base_color, falloff);
-            } else {
-                // Consumer organisms - orange/red with center highlight  
-                let center_intensity = 1.0 - (dist / p.radius) * 0.4;
-                let base_color = vec3<f32>(0.8, 0.4, 0.2) * center_intensity;
-                final_color = mix(final_color, base_color, falloff);
-            }
+
+            // Colors tuned for clarity in print & digital
+          var base_color: vec3<f32>;
+          if (p.is_plant == 1u) {
+              base_color = vec3<f32>(0.16, 0.55, 0.28); // Dark green
+          } else {
+              base_color = vec3<f32>(0.80, 0.12, 0.16); // Crimson red
+          }
+
+            final_color = mix(final_color, base_color, falloff);
         }
     }
-    
-    return vec4<f32>(final_color, 1.0);
+
+    return vec4<f32>(gamma_correct(final_color), 1.0);
 }

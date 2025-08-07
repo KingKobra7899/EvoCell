@@ -189,7 +189,7 @@ impl QuadTree{
             }
         }
 
-        if(self.divided){
+        if self.divided {
             found.extend(self.northwest.as_ref().unwrap().query(rect));
             found.extend(self.northeast.as_ref().unwrap().query(rect));
             found.extend(self.southwest.as_ref().unwrap().query(rect));

@@ -1,8 +1,7 @@
 // solver.rs - Fixed version with deferred deletion system
-use core::num;
 use fast_poisson::Poisson2D;
-use nalgebra::Vector2;
-use rand::{rng, rngs::ThreadRng, seq::index, Rng};
+use nalgebra::{clamp, Vector2};
+use rand::{rngs::ThreadRng, Rng};
 mod quadtree;
 use quadtree::{QuadTree, Rect};
 mod cell;
@@ -18,6 +17,8 @@ pub struct PhysicsSolver {
     pub plants: Vec<usize>,
     pub radii: Vec<f32>,
     pub is_plant: Vec<bool>,
+    pub spring_connections: Vec<Vector2<usize>>,
+    pub avg_thresh: f32,
     width: i32,
     height: i32,
     pub(crate) num_cells: i32,
@@ -33,14 +34,16 @@ pub struct PhysicsSolver {
     pub avg_social: f32,
     pub avg_sight_r: f32,
     pub num_particles: i32,
+    pub avg_pred: f32,
     pub pending_deletions: Vec<usize>, // New field for deferred deletions
-    pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
+    pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
 }
 
 impl PhysicsSolver {
     pub fn new(width: i32, height: i32) -> PhysicsSolver {
         return PhysicsSolver {
             positions: Vec::new(),
+            spring_connections: Vec::new(),
             rng: rand::rng(),
             old_positions: Vec::new(),
             accelerations: Vec::new(),
@@ -49,10 +52,12 @@ impl PhysicsSolver {
             cells: Vec::new(),
             avg_speed: 0.0,
             avg_brain_size: 0.0,
+            avg_thresh: 0.0,
             avg_hunger: 0.0,
             avg_isolation: 0.0,
             avg_social: 0.0,
             avg_sight_r: 0.0,
+            avg_pred: 0.0,
             cell_indices: Vec::new(),
             plants: Vec::new(),
             is_plant: Vec::new(),
@@ -75,6 +80,8 @@ impl PhysicsSolver {
         self.avg_isolation = 0.0;
         self.avg_social = 0.0;
         self.avg_sight_r = 0.0;
+        self.avg_pred = 0.0;
+        self.avg_thresh = 0.0;
     }
 
     pub fn add_particle_grid(
@@ -213,12 +220,65 @@ impl PhysicsSolver {
             self.accelerations[i] = Vector2::new(0.0, 0.0);
     
             // Radius based on mass
-            self.radii[i] = f32::max(5.0 * self.masses[i].sqrt() * 0.5, 5.0);
+            self.radii[i] = f32::max(5.0 * self.masses[i].sqrt() * 0.5, 2.0);
         }
     }
     
+    pub fn apply_springs(&mut self, _k: f32) {
+        let spring_connections = self.spring_connections.clone(); // Drop the borrow
+        for pair in &spring_connections {
+            
+            let p1 = pair[0];
+            let p2 = pair[1];
     
-
+            if p1 >= self.num_particles as usize || p2 >= self.num_particles as usize {
+                continue;
+            }
+    
+            let pos1 = self.positions[p1];
+            let pos2 = self.positions[p2];
+    
+            let axis = pos1 - pos2;
+            let dist = axis.magnitude();
+    
+            let target_distance: f32 = self.radii[p1] + self.radii[p2];
+            
+            if dist != target_distance {
+                // Hard constraint: force distance to sum of radii
+                let normal = if dist > 0.0 {
+                    axis / dist
+                } else {
+                    // If particles are at same position, use arbitrary direction
+                    Vector2::new(1.0, 0.0)
+                };
+                
+                // For velocity Verlet, we need to update previous positions
+                // to maintain velocity consistency
+                let old_pos1 = self.old_positions[p1];
+                let old_pos2 = self.old_positions[p2];
+                
+                // Calculate new positions to maintain exact distance
+                let center = (pos1 + pos2) / 2.0;
+                let half_target = target_distance / 2.0;
+                
+                let new_pos1 = center + normal * half_target;
+                let new_pos2 = center - normal * half_target;
+                
+                // Calculate how much each particle moved
+                let delta1 = new_pos1 - pos1;
+                let delta2 = new_pos2 - pos2;
+                
+                // Update positions
+                self.positions[p1] = new_pos1;
+                self.positions[p2] = new_pos2;
+                
+                // Update old positions to maintain velocity in Verlet integration
+                // old_pos = new_pos - velocity * dt, so we preserve the velocity component
+                self.old_positions[p1] = old_pos1 + delta1;
+                self.old_positions[p2] = old_pos2 + delta2;
+            }
+        }
+    }
     pub fn update_quadtree(&mut self) {
         self.qt.clear();
         
@@ -290,27 +350,59 @@ impl PhysicsSolver {
     pub fn apply_rect_constraint(&mut self, rectangle: Rect) {
         let buffer = 20.0;
         let expanded_rect = Rect::new(rectangle.x, rectangle.y, rectangle.w + buffer, rectangle.h + buffer);
-
+        let push_force = 5000.0; // Adjust this value to control push strength
+    
+        let mut forces_to_apply = Vec::new();
+    
         for i in self.qt.query(&expanded_rect) {
             let pos = &mut self.positions[i as usize];
             let r = self.radii[i as usize];
-
+    
             let y_top = rectangle.y - rectangle.h;
             let y_bottom = rectangle.y + rectangle.h;
             let x_left = rectangle.x - rectangle.w;
             let x_right = rectangle.x + rectangle.w;
-
+    
+            // Top boundary
             if pos.y - r < y_top {
                 pos.y = y_top + r;
+                if self.rng.random_range(0.0..1.0) < 0.0 {
+                    self.pending_deletions.push(i as usize);
+                } else {
+                    forces_to_apply.push((i as usize, Vector2::new(0.0, push_force)));
+                }
+            // Bottom boundary
             } else if pos.y + r > y_bottom {
                 pos.y = y_bottom - r;
+                if self.rng.random_range(0.0..1.0) < 0.0 {
+                    self.pending_deletions.push(i as usize);
+                } else {
+                    forces_to_apply.push((i as usize, Vector2::new(0.0, -push_force)));
+                }
             }
-
+    
+            // Left boundary
             if pos.x - r < x_left {
                 pos.x = x_left + r;
+                if self.rng.random_range(0.0..1.0) < 0.0 {
+                    self.pending_deletions.push(i as usize);
+                } else {
+                    forces_to_apply.push((i as usize, Vector2::new(push_force, 0.0)));
+                }
+            // Right boundary
             } else if pos.x + r > x_right {
                 pos.x = x_right - r;
+                if self.rng.random_range(0.0..1.0) < 0.0 {
+                    self.pending_deletions.push(i as usize);
+                } else {
+                    forces_to_apply.push((i as usize, Vector2::new(-push_force, 0.0)));
+                }
             }
+        }
+    
+        // Apply all forces after the loop to avoid borrow conflicts
+        for (index, force) in forces_to_apply {
+            self.accelerate_particle(index, force);
         }
     }
 
@@ -358,6 +450,24 @@ for index in deletions_to_process {
         self.masses.remove(index);
         self.is_plant.remove(index);
 
+
+        self.spring_connections.retain_mut(|connection| {
+            // Remove connections that involve the deleted particle
+            if connection.x == index || connection.y == index {
+                return false; // Remove this connection
+            }
+            
+            // Update indices for particles that come after the deleted one
+            if connection.x > index {
+                connection.x -= 1;
+            }
+            if connection.y > index {
+                connection.y -= 1;
+            }
+            
+            true // Keep this connection
+        });
+
         // Update cell indices and remove cells
         for i in (0..self.cell_indices.len()).rev() {
             let idx = self.cell_indices[i];
@@ -385,9 +495,8 @@ for index in deletions_to_process {
         self.num_particles -= 1;
     }
 
-    // Process pending additions
     fn process_additions(&mut self) {
-        for (child_pos, child_mass, brain_delta, child_brain_size, child_sight_r, child_sight_a, child_pred, child_max_speed, parent_cell) in self.pending_additions.drain(..) {
+        for (child_pos, child_mass, brain_delta, child_brain_size, child_sight_r, child_sight_a, child_pred, child_max_speed,child_adhesion, child_thresh, parent_cell) in self.pending_additions.drain(..) {
             
             let child_index = self.num_particles as usize;
             
@@ -400,92 +509,46 @@ for index in deletions_to_process {
             self.is_plant.push(false);
             self.num_particles += 1;
             self.num_cells += 1;
-
+    
+            // Ensure child_brain_size is valid and positive
+            let safe_child_brain_size = child_brain_size.max(1);
+            let input_size = (65 + safe_child_brain_size) as usize;
+            
             // Create child cell based on brain_delta
-            let child_cell = if brain_delta == 0 {
-                Cell {
+            
+            let child_cell = Cell {
                     index: child_index,
-                    brain_size: child_brain_size,
+                    brain_size: safe_child_brain_size,
                     current_energy: child_mass,
                     state_encoder: parent_cell.state_encoder.mutate(&mut self.rng),
                     social_decoder: parent_cell.social_decoder.mutate(&mut self.rng),
                     hunger_decoder: parent_cell.hunger_decoder.mutate(&mut self.rng),
+                    Brain: parent_cell.Brain.mutate(&mut self.rng),
                     isolation_decoder: parent_cell.isolation_decoder.mutate(&mut self.rng),
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 4.0,
+                    birth_threshold: clamp(child_thresh, 0.5, 1.0),
                     max_mass: child_mass,
                     max_speed: child_max_speed,
                     old_h: 0.0,
                     old_iso: 0.0,
                     old_soc: 0.0,
-                    old_encoding: nalgebra::DMatrix::<f32>::zeros(child_brain_size as usize, 1),
+                    adhesion: child_adhesion,
+                    // Use safe_child_brain_size here
+                    old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
                     sight_r: child_sight_r,
                     sight_a: child_sight_a,
                     desired_energy: child_mass,
-                    predation: child_pred,
+                    predation: clamp(child_pred, 0.0, 1.0),
                     to_delete: false,
-                }
-            } else if brain_delta > 0 {
-                let child_se = parent_cell.state_encoder.add_neurons(&mut self.rng, brain_delta as usize).mutate(&mut self.rng);
-                let child_sd = parent_cell.social_decoder.add_neurons(&mut self.rng, brain_delta as usize).mutate(&mut self.rng);
-                let child_hd = parent_cell.hunger_decoder.add_neurons(&mut self.rng, brain_delta as usize).mutate(&mut self.rng);
-                let child_id = parent_cell.isolation_decoder.add_neurons(&mut self.rng, brain_delta as usize).mutate(&mut self.rng);
-
-                Cell {
-                    index: child_index,
-                    brain_size: child_brain_size,
-                    current_energy: child_mass,
-                    state_encoder: child_se,
-                    social_decoder: child_sd,
-                    hunger_decoder: child_hd,
-                    isolation_decoder: child_id,
-                    old_h: 0.0,
-                    old_iso: 0.0,
-                    old_soc: 0.0,
-                    old_encoding: nalgebra::DMatrix::<f32>::zeros(child_brain_size as usize, 1),
-                    metabolic_rate: 0.0,
-                    current_mass: child_mass / 2.0,
-                    max_mass: child_mass,
-                    max_speed: child_max_speed,
-                    sight_r: child_sight_r,
-                    sight_a: child_sight_a,
-                    desired_energy: child_mass,
-                    predation: child_pred,
-                    to_delete: false,
-                }
-            } else {
-                let brain_remove = (-brain_delta) as usize;
-                let child_se = parent_cell.state_encoder.remove_neurons(&mut self.rng, brain_remove).mutate(&mut self.rng);
-                let child_sd = parent_cell.social_decoder.remove_neurons(&mut self.rng, brain_remove).mutate(&mut self.rng);
-                let child_hd = parent_cell.hunger_decoder.remove_neurons(&mut self.rng, brain_remove).mutate(&mut self.rng);
-                let child_id = parent_cell.isolation_decoder.remove_neurons(&mut self.rng, brain_remove).mutate(&mut self.rng);
-
-                Cell {
-                    index: child_index,
-                    brain_size: child_brain_size,
-                    current_energy: child_mass,
-                    state_encoder: child_se,
-                    social_decoder: child_sd,
-                    hunger_decoder: child_hd,
-                    isolation_decoder: child_id,
-                    metabolic_rate: 0.0,
-                    current_mass: child_mass / 2.0,
-                    max_mass: child_mass,
-                    max_speed: child_max_speed,
-                    sight_r: child_sight_r,
-                    sight_a: child_sight_a,
-                    old_h: 0.0,
-                    old_iso: 0.0,
-                    old_soc: 0.0,
-                    old_encoding: nalgebra::DMatrix::<f32>::zeros(child_brain_size as usize, 1),
-                    desired_energy: child_mass,
-                    predation: child_pred,
-                    to_delete: false,
-                }
-            };
-
+                };
+    
             self.cells.push(child_cell);
             self.cell_indices.push(child_index);
+
+            if self.rng.random_range(0.0..1.0) < parent_cell.adhesion {
+                self.spring_connections.push(Vector2::new(parent_cell.index, child_index));
+            }
         }
     }
 
@@ -509,9 +572,9 @@ for index in deletions_to_process {
             let mass = self.rng.random_range(6.0..10.0);
             
             if self.rng.random_range(0.0..1.0) < plant_ratio {
-                self.add_plant(pos, mass * 0.5, mass, Vector2::new(0.0, 0.0));
+                self.add_plant(pos, mass, mass, Vector2::new(0.0, 0.0));
             } else {
-                self.add_cell(pos, mass * 1.5,  mass, Vector2::new(0.0, 0.0));
+                self.add_cell(pos, mass ,  mass, Vector2::new(0.0, 0.0));
             }
         }
     }
@@ -527,6 +590,7 @@ for index in deletions_to_process {
         
         for _ in 0..substeps {
             // Move cells out to avoid borrow conflicts
+            
             let mut cells = std::mem::take(&mut self.cells);
             for cell in &mut cells {
                 cell.timestep(self);
@@ -546,20 +610,28 @@ for index in deletions_to_process {
             self.update_quadtree();
     
             // Update physics
+            
             self.integrate_forces(dt / (substeps as f32), grav, 15.0, 150.0);
+
             self.inter_particle_collisions();
+           
             self.apply_rect_constraint(self.boundary);
+            //self.apply_springs(0.0);
         }
 
-        let base_rate = 0.1;
-        let growth_probability = base_rate * (self.num_plants as f32).sqrt(); // or use linear: base_rate * self.num_cells as f32
-        if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells > 0 {
+        let base_rate = 0.01;
+        let growth_probability = (base_rate * (self.num_plants as f32)).sqrt(); // or use linear: base_rate * self.num_cells as f32
+        if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells < 100 {
             self.random_spawn_plant();
+            self.random_spawn_plant();
+        }
+        if self.num_cells == 0 {
+            self.init_world(10, 0.0);
         }
     }
 
     pub fn save_random_creature(&mut self) {
-        let mut index = self.rng.random_range(0..self.num_cells as usize);
+        let index = self.rng.random_range(0..self.num_cells as usize);
         let cell = &self.cells[index];
         cell.save_brain_to_file("brain.json").expect("Failed to save brain");
     }
