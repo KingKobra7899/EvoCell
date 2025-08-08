@@ -543,7 +543,7 @@ impl PhysicsSolver {
                     sight_r: child_sight_r,
                     sight_a: child_sight_a,
                     desired_energy: child_mass,
-                    predation: clamp(child_pred, 0.0, 1.0),
+                    predation: clamp(child_pred, 0.0, 0.75),
                     to_delete: false,
                 };
     

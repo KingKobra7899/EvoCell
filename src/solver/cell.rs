@@ -6,7 +6,7 @@ use rand::{rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 1.0;
+const MUTATION_RATE: f64 = 0.1;
 
 use serde::Serialize;
 
@@ -16,7 +16,7 @@ struct BrainExport {
     encoder_weights: Vec<f32>,
     encoder_bias: Vec<f32>,
     decoder_weights: Vec<f32>,
-
+    decoder_bias: Vec<f32>,
     sight_r: f32,
     sight_a: f32,
     predation: f32,
@@ -110,7 +110,7 @@ impl EnvironmentalEncoder {
     }
 
     pub fn mutate(&self, rng: &mut ThreadRng) -> Self {
-        let normal = Normal::new(0.0, 0.1).unwrap();
+        let normal = Normal::new(0.0, 0.5).unwrap();
         
         let new_weights: DMatrix<f32> = self.weight_matrix.map(|x| {
             if rng.random_bool(MUTATION_RATE) {
@@ -163,11 +163,14 @@ impl DirMovementEncoder {
     }
 
     pub fn get_movement_vector(&self, input: &DMatrix<f32>, max_speed: f32) -> Vector2<f32> {
-        let base_output = self.decoder.encode(&self.encoder.encode(&input)) - self.decoder.bias.clone();
-        let mut norm_output: Vector2<f32> = Vector2::new(base_output[0], base_output[1]);
-        norm_output.x = max_speed * (norm_output.x);
-        norm_output.y = max_speed * (norm_output.y);
-        return norm_output;
+        let base_output = self.decoder.encode(&self.encoder.encode(&input));
+        
+        let mut theta = (base_output[0] + 1.0) / 2.0;
+        theta *= 2.0 * PI;
+        let r = max_speed * base_output[1];
+
+        
+        return Vector2::new( r * theta.cos(), r * theta.sin());
     }
 }
 
@@ -287,7 +290,7 @@ impl Cell {
             index,
             brain_size,
             current_energy: mass,
-            state_encoder: EnvironmentalEncoder::random((72 + brain_size) as usize, brain_size as usize, rng),
+            state_encoder: EnvironmentalEncoder::random((71 + brain_size) as usize, brain_size as usize, rng),
             social_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             hunger_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             isolation_decoder: CognitiveDecoder::random(brain_size as usize, rng),
@@ -362,7 +365,7 @@ impl Cell {
         let pos: Vector2<f32> = world.positions[self.index];
         let vel: Vector2<f32> = world.positions[self.index] - world.old_positions[self.index];
         let point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
-        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 72) as usize, 1);
+        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 71) as usize, 1);
 
         for (i, &idx) in point_idx.iter().enumerate() {
             if i >= 20 { break; } // Limit to prevent overflow
@@ -568,6 +571,7 @@ impl Cell {
             encoder_weights: self.Brain.encoder.weight_matrix.as_slice().to_vec(),
             encoder_bias: self.Brain.encoder.bias.as_slice().to_vec(),
             decoder_weights: self.Brain.decoder.weight_matrix.as_slice().to_vec(),
+            decoder_bias: self.Brain.decoder.bias.as_slice().to_vec(),
             birth_threshold: self.birth_threshold,
             adhesion: self.adhesion,
             sight_r: self.sight_r,
@@ -603,7 +607,7 @@ impl Clone for Cell {
             hunger_decoder: CognitiveDecoder::with_weights(self.hunger_decoder.weights.clone()),
             isolation_decoder: CognitiveDecoder::with_weights(self.isolation_decoder.weights.clone()),
             Brain: DirMovementEncoder { encoder: EnvironmentalEncoder::with_weights(self.Brain.encoder.weight_matrix.clone(), self.Brain.encoder.bias.clone()), 
-                decoder: EnvironmentalEncoder::with_weights(self.Brain.decoder.weight_matrix.clone(), self.Brain.decoder.bias.clone()) },
+            decoder: EnvironmentalEncoder::with_weights(self.Brain.decoder.weight_matrix.clone(), self.Brain.decoder.bias.clone()) },
             metabolic_rate: self.metabolic_rate,
             birth_threshold: self.birth_threshold,
             current_mass: self.current_mass,
