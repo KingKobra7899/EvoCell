@@ -220,7 +220,7 @@ impl PhysicsSolver {
             self.accelerations[i] = Vector2::new(0.0, 0.0);
     
             // Radius based on mass
-            self.radii[i] = f32::max(5.0 * self.masses[i].sqrt() * 0.5, 2.0);
+            self.radii[i] = f32::max(self.masses[i].sqrt(), 2.0);
         }
     }
     
@@ -639,18 +639,19 @@ impl PhysicsSolver {
     
             // Update physics
             
-            self.integrate_forces(dt / (substeps as f32), grav, 15.0, 150.0);
+            
 
             self.inter_particle_collisions();
            
             self.apply_rect_constraint(self.boundary);
+            self.integrate_forces(dt / (substeps as f32), grav, 15.0, 150.0);
             //self.apply_springs(0.0);
         }
 
         
         let growth_probability: f32 = 0.01; // or use linear: base_rate * self.num_cells as f32
-        if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells < 100 {
-            self.random_spawn_plant_cluster(5,50.0);
+        if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells < 200 {
+            self.random_spawn_plant_cluster(10,100.0);
         }
         if self.num_cells == 0 {
             self.init_world(10, 0.0);

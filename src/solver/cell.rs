@@ -460,7 +460,7 @@ impl Cell {
     
                 if (is_plant || can_eat_animal) && size_constraint {
                     // Energy gain based on target's mass
-                    let energy_conversion_rate = if is_plant { 10.0 } else { 15.0 };
+                    let energy_conversion_rate = if is_plant { 15.0 } else { 30.0 };
                     let energy_gain = target_mass * energy_conversion_rate;
                     
                     self.current_energy += energy_gain;
