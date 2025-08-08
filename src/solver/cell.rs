@@ -281,7 +281,7 @@ impl Cell {
         let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
-        let max_speed = rng.random_range(0.1..0.2);
+        let max_speed = rng.random_range(0.01..0.1);
 
         Cell {
             index,
@@ -419,7 +419,7 @@ impl Cell {
         // Get environmental information and movement decision
         let internal_rep = self.encode_environment(world);
         let movement_vec: Vector2<f32> = self.Brain.get_movement_vector(&internal_rep, self.max_speed);
-    
+        self.old_encoding = self.Brain.encoder.encode(&internal_rep);
         // Get current position and velocity for sight calculations
         let pos: Vector2<f32> = world.positions[self.index];
         let vel: Vector2<f32> = world.positions[self.index] - world.old_positions[self.index];

@@ -422,13 +422,13 @@ impl PhysicsSolver {
         self.pending_deletions.reverse();
 
         let deletions_to_process: Vec<usize> = self.pending_deletions.clone();
-self.pending_deletions.clear();
+        self.pending_deletions.clear();
 
-for index in deletions_to_process {
-   if index < self.num_particles as usize {
-       self.delete_particle_immediate(index);
-   }
-}
+        for index in deletions_to_process {
+        if index < self.num_particles as usize {
+            self.delete_particle_immediate(index);
+        }
+        }
 
         self.pending_deletions.clear();
     }
@@ -567,13 +567,13 @@ for index in deletions_to_process {
 
     pub fn init_world(&mut self, num_entities: usize, plant_ratio: f32) {
         let points = Poisson2D::new()
-            .with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 30.0)
+            .with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 20.0)
             .iter()
             .take(num_entities);
         
         for point in points {
             let pos: Vector2<f32> = Vector2::new((point[0] + 10.0) as f32, (point[1] + 10.0) as f32);
-            let mass = self.rng.random_range(6.0..10.0);
+            let mass = self.rng.random_range(6.0..20.0);
             
             if self.rng.random_range(0.0..1.0) < plant_ratio {
                 self.add_plant(pos, mass, mass, Vector2::new(0.0, 0.0));
@@ -647,10 +647,10 @@ for index in deletions_to_process {
             //self.apply_springs(0.0);
         }
 
-        let base_rate = 0.01;
-        let growth_probability = 0.02 * (base_rate * (self.num_plants as f32)).sqrt(); // or use linear: base_rate * self.num_cells as f32
+        
+        let growth_probability: f32 = 0.01; // or use linear: base_rate * self.num_cells as f32
         if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells < 100 {
-            self.random_spawn_plant_cluster(5,75.0);
+            self.random_spawn_plant_cluster(5,50.0);
         }
         if self.num_cells == 0 {
             self.init_world(10, 0.0);
