@@ -148,7 +148,7 @@ pub struct DirMovementEncoder {
 impl DirMovementEncoder {
     pub fn random (rng: &mut ThreadRng, brain_size: usize) -> Self {
         DirMovementEncoder{
-            encoder: EnvironmentalEncoder::random(73 + brain_size, brain_size, rng),
+            encoder: EnvironmentalEncoder::random(71 + brain_size, brain_size, rng),
             decoder: EnvironmentalEncoder::random(brain_size, 2, rng)
 
         }
@@ -287,7 +287,7 @@ impl Cell {
             index,
             brain_size,
             current_energy: mass,
-            state_encoder: EnvironmentalEncoder::random((73 + brain_size) as usize, brain_size as usize, rng),
+            state_encoder: EnvironmentalEncoder::random((72 + brain_size) as usize, brain_size as usize, rng),
             social_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             hunger_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             isolation_decoder: CognitiveDecoder::random(brain_size as usize, rng),
@@ -362,7 +362,7 @@ impl Cell {
         let pos: Vector2<f32> = world.positions[self.index];
         let vel: Vector2<f32> = world.positions[self.index] - world.old_positions[self.index];
         let point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
-        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 73) as usize, 1);
+        let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 72) as usize, 1);
 
         for (i, &idx) in point_idx.iter().enumerate() {
             if i >= 20 { break; } // Limit to prevent overflow
@@ -377,12 +377,12 @@ impl Cell {
         }
 
         
-        full_env[60] = self.desired_energy - self.current_energy;
+        full_env[60] = (self.desired_energy - self.current_energy) / self.desired_energy;
         full_env[61] = self.metabolic_rate;
         let vel = world.positions[self.index] - world.old_positions[self.index];
 
-        full_env[62] = vel.x;
-        full_env[63] = vel.y;
+        full_env[62] = vel.magnitude();
+        full_env[63] = vel.angle(&Vector2::new(0.0, 1.0));
         full_env[64] = self.current_mass;
         
 
@@ -395,10 +395,9 @@ impl Cell {
         full_env[68] = (((world.boundary.x + world.boundary.w) - pos.x) / (2.0 * world.boundary.w)).min(1.0);
 
 
-        full_env[69] = vel.magnitude();
-        full_env[70] = self.current_mass * vel.magnitude() * vel.magnitude();
-        full_env[71] = pos.x / world.boundary.w / 2.0;
-        full_env[72] = pos.y / world.boundary.h / 2.0;
+
+        full_env[69] = pos.x / world.boundary.w / 2.0;
+        full_env[70] = pos.y / world.boundary.h / 2.0;
         full_env
             .view_mut((self.brain_size as usize, 0), (self.brain_size as usize, 1))
             .copy_from(&self.old_encoding);
