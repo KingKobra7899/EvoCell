@@ -6,7 +6,7 @@ use rand::{rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.75;
+const MUTATION_RATE: f64 = 1.0;
 
 use serde::Serialize;
 
