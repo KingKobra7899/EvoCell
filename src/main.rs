@@ -13,8 +13,8 @@ use winit::{
 mod solver;
 mod gpu_renderer; // Import our new module
 
-const WIDTH: usize = 800;
-const HEIGHT: usize = 800;
+const WIDTH: usize = 1600;
+const HEIGHT: usize = 1600;
 
 struct App {
     window: Option<Window>,

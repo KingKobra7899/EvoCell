@@ -314,7 +314,9 @@ impl Cell {
     }
 
     pub fn create_child(&self, world: &mut PhysicsSolver) {
-        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(world.radii[self.index] * 2.1, 0.0);
+        
+        let random_offset = Vector2::new(world.rng.random_range(100.0..200.0), world.rng.random_range(100.0..200.0));
+        let child_pos: Vector2<f32> = world.positions[self.index] + random_offset;
         let mut child_brain_size = self.brain_size;
         let mut child_mass = self.max_mass;
         let mut child_sight_r = self.sight_r;

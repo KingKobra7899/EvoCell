@@ -649,7 +649,7 @@ impl PhysicsSolver {
         }
 
         
-        let growth_probability: f32 = 0.01; // or use linear: base_rate * self.num_cells as f32
+        let growth_probability: f32 = 0.0075; // or use linear: base_rate * self.num_cells as f32
         if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells < 200 {
             self.random_spawn_plant_cluster(10,100.0);
         }
