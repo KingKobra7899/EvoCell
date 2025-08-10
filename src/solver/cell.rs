@@ -329,23 +329,23 @@ impl Cell {
 
         if world.rng.random_range(0.0..1.0) < (MUTATION_RATE) {
             //brain_delta = world.rng.random_range(-2..2);
-            child_brain_size += brain_delta;
+            //child_brain_size += brain_delta;
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_mass += clamp(world.rng.random_range(-1..1) as f32, 5.0, 100.0);
+            //child_mass += clamp(world.rng.random_range(-1..1) as f32, 5.0, 100.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_sight_r += world.rng.random_range(-2.0..2.0) as f32;
+            //child_sight_r += world.rng.random_range(-2.0..2.0) as f32;
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_sight_a += world.rng.random_range(-0.05..0.05) as f32;
-            child_sight_a = clamp(child_sight_a, 0.0, PI / 2.0);
+            //child_sight_a += world.rng.random_range(-0.05..0.05) as f32;
+            //child_sight_a = clamp(child_sight_a, 0.0, PI / 2.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_pred += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
+            //child_pred += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_thresh += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.5, 1.0);
+            //child_thresh += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.5, 1.0);
         }
         
 
