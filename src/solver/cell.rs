@@ -466,12 +466,12 @@ impl Cell {
                 // Prevent eating things that are too large relative to self
                 let size_constraint = target_mass < self.current_mass * 3.0;
     
-                if (is_plant || can_eat_animal) && size_constraint {
+                if (is_plant || can_eat_animal) && size_constraint && world.rng.random_bool(0.333) {
                     // Energy gain based on target's mass
-                    let energy_conversion_rate = if is_plant { 7.5 } else { 15.0 };
+                    let energy_conversion_rate = if is_plant { 15.0 } else { 25.0 };
                     let energy_gain = (target_mass / 2.0) * energy_conversion_rate;
 
-                    self.current_mass += target_mass / 2.0;
+                    self.current_mass += target_mass / 3.0;
                     self.current_energy += energy_gain;
                     
                     // Mark for deletion (avoid double-processing)

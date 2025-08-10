@@ -531,7 +531,7 @@ impl PhysicsSolver {
                     isolation_decoder: parent_cell.isolation_decoder.mutate(&mut self.rng),
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 4.0,
-                    birth_threshold: clamp(child_thresh, 0.5, 0.85),
+                    birth_threshold: clamp(child_thresh, 0.5, 1.0),
                     max_mass: child_mass,
                     max_speed: child_max_speed,
                     old_h: 0.0,
