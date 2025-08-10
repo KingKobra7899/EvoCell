@@ -369,8 +369,13 @@ impl Cell {
         let point_idx: Vec<i32> = world.qt.query_cone(pos, vel, self.sight_r, self.sight_a);
         let mut full_env = DMatrix::<f32>::zeros((self.brain_size + 71) as usize, 1);
 
-        for (i, &idx) in point_idx.iter().enumerate() {
-            if i >= 20 { break; } // Limit to prevent overflow
+        let mut indices_to_shuffle: Vec<usize> = (0..point_idx.len().min(20)).collect();
+
+        let mut rng = rand::rng();
+        indices_to_shuffle.shuffle(&mut rng);
+
+        for (i, &shuffled_i) in indices_to_shuffle.iter().enumerate() {
+            let idx = point_idx[shuffled_i];
             let other_pos = world.positions[idx as usize];
             let dx = (pos.x - other_pos.x) / self.sight_r;
             let dy = (pos.y - other_pos.y) / self.sight_r;
@@ -380,6 +385,7 @@ impl Cell {
             full_env[(base + 1, 0)] = dy;
             full_env[(base + 2, 0)] = world.is_plant[idx as usize] as i32 as f32;
         }
+
 
         
         full_env[60] = (self.desired_energy - self.current_energy) / self.desired_energy;
@@ -462,9 +468,10 @@ impl Cell {
     
                 if (is_plant || can_eat_animal) && size_constraint {
                     // Energy gain based on target's mass
-                    let energy_conversion_rate = if is_plant { 15.0 } else { 30.0 };
-                    let energy_gain = target_mass * energy_conversion_rate;
-                    
+                    let energy_conversion_rate = if is_plant { 7.5 } else { 15.0 };
+                    let energy_gain = (target_mass / 2.0) * energy_conversion_rate;
+
+                    self.current_mass += target_mass / 2.0;
                     self.current_energy += energy_gain;
                     
                     // Mark for deletion (avoid double-processing)

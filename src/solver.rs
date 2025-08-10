@@ -531,7 +531,7 @@ impl PhysicsSolver {
                     isolation_decoder: parent_cell.isolation_decoder.mutate(&mut self.rng),
                     metabolic_rate: 0.0,
                     current_mass: child_mass / 4.0,
-                    birth_threshold: clamp(child_thresh, 0.5, 1.0),
+                    birth_threshold: clamp(child_thresh, 0.5, 0.85),
                     max_mass: child_mass,
                     max_speed: child_max_speed,
                     old_h: 0.0,
@@ -543,7 +543,7 @@ impl PhysicsSolver {
                     sight_r: child_sight_r,
                     sight_a: child_sight_a,
                     desired_energy: child_mass,
-                    predation: clamp(child_pred, 0.0, 0.75),
+                    predation: clamp(child_pred, 0.0, 1.0),
                     to_delete: false,
                 };
     
