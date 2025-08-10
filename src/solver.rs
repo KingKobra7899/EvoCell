@@ -220,7 +220,7 @@ impl PhysicsSolver {
             self.accelerations[i] = Vector2::new(0.0, 0.0);
     
             // Radius based on mass
-            self.radii[i] = f32::max(self.masses[i].sqrt(), 2.0);
+            self.radii[i] = f32::max(self.masses[i].sqrt() * 2.0, 2.0);
         }
     }
     
@@ -354,7 +354,7 @@ impl PhysicsSolver {
     
         let mut forces_to_apply = Vec::new();
     
-        for i in self.qt.query(&expanded_rect) {
+        for i in 0..self.num_particles {
             let pos = &mut self.positions[i as usize];
             let r = self.radii[i as usize];
     
@@ -366,7 +366,7 @@ impl PhysicsSolver {
             // Top boundary
             if pos.y - r < y_top {
                 pos.y = y_top + r;
-                self.masses[i as usize]*= 0.99999;
+                self.masses[i as usize]*= 0.999;
                 if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
@@ -375,7 +375,7 @@ impl PhysicsSolver {
             // Bottom boundary
             } else if pos.y + r > y_bottom {
                 pos.y = y_bottom - r;
-                self.masses[i as usize]*= 0.99999;
+                self.masses[i as usize]*= 0.999;
                 if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
@@ -386,7 +386,7 @@ impl PhysicsSolver {
             // Left boundary
             if pos.x - r < x_left {
                 pos.x = x_left + r;
-                self.masses[i as usize]*= 0.99999;
+                self.masses[i as usize]*= 0.999;
                 if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
@@ -395,7 +395,7 @@ impl PhysicsSolver {
             // Right boundary
             } else if pos.x + r > x_right {
                 pos.x = x_right - r;
-                self.masses[i as usize]*= 0.99999;
+                self.masses[i as usize]*= 0.999;
                 if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
@@ -567,7 +567,7 @@ impl PhysicsSolver {
 
     pub fn init_world(&mut self, num_entities: usize, plant_ratio: f32) {
         let points = Poisson2D::new()
-            .with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 20.0)
+            .with_dimensions([(self.height - 2 * 10) as f64, (self.width - 2 * 10) as f64], 30.0)
             .iter()
             .take(num_entities);
         

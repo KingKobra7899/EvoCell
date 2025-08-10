@@ -167,7 +167,7 @@ impl DirMovementEncoder {
         
         let mut theta = (base_output[0] + 1.0) / 2.0;
         theta *= 2.0 * PI;
-        let r = max_speed * base_output[1];
+        let r = max_speed * (base_output[1] + 1.0) / 2.0;
 
         
         return Vector2::new( r * theta.cos(), r * theta.sin());
@@ -284,7 +284,7 @@ impl Cell {
         let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
-        let max_speed = rng.random_range(0.01..0.1);
+        let max_speed = rng.random_range(0.1..0.5);
 
         Cell {
             index,
@@ -315,8 +315,8 @@ impl Cell {
 
     pub fn create_child(&self, world: &mut PhysicsSolver) {
         
-        let random_offset = Vector2::new(world.rng.random_range(100.0..200.0), world.rng.random_range(100.0..200.0));
-        let child_pos: Vector2<f32> = world.positions[self.index] + random_offset;
+        
+        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(0.0, world.radii[self.index] * 2.5);
         let mut child_brain_size = self.brain_size;
         let mut child_mass = self.max_mass;
         let mut child_sight_r = self.sight_r;
@@ -386,9 +386,9 @@ impl Cell {
         full_env[61] = self.metabolic_rate;
         let vel = world.positions[self.index] - world.old_positions[self.index];
 
-        full_env[62] = vel.magnitude();
-        full_env[63] = vel.angle(&Vector2::new(0.0, 1.0));
-        full_env[64] = self.current_mass;
+        full_env[62] = vel.magnitude() / self.max_speed;
+        full_env[63] = vel.angle(&Vector2::new(0.0, 1.0)) / 2.0 * PI;
+        full_env[64] = self.current_mass / self.max_mass;
         
 
         // Only include distance if edge is within sight radius, otherwise set to max
@@ -479,16 +479,16 @@ impl Cell {
     
         // ----- Metabolic Calculations -----
         // Basal metabolic rate using Kleiber's law (3/4 power scaling)
-        let basal_cost = 0.01 * self.current_mass.powf(0.75);
+        let basal_cost = 0.015 * self.current_mass.powf(0.75);
         
         // Brain maintenance cost
         let brain_cost = 0.002 * (self.brain_size as f32).powf(0.8);
         
         // Movement cost proportional to kinetic energy
         let movement_magnitude = movement_vec.magnitude();
-        //let move_cost = 0.02 * self.current_mass * movement_magnitude.powi(2);
+        let move_cost = 0.005 * self.current_mass * movement_magnitude.powi(2);
         
-        self.metabolic_rate = basal_cost + brain_cost;
+        self.metabolic_rate = basal_cost + brain_cost + move_cost;
         self.current_energy -= self.metabolic_rate;
     
         // ----- Energy ↔ Mass Exchange -----
@@ -497,7 +497,7 @@ impl Cell {
         
         if self.current_energy < starvation_threshold {
             // Convert mass to energy when starving
-            let mass_conversion_rate = 0.001;
+            let mass_conversion_rate = 0.005;
             let mass_loss = mass_conversion_rate * self.current_mass;
             let energy_per_mass = 25.0;
             
@@ -505,7 +505,7 @@ impl Cell {
             self.current_energy += mass_loss * energy_per_mass;
         } else if self.current_energy > surplus_threshold {
             // Convert surplus energy to mass
-            let energy_conversion_rate = 0.0008;
+            let energy_conversion_rate = 0.0005;
             let energy_to_convert = energy_conversion_rate * (self.current_energy - self.desired_energy);
             let mass_per_energy = 1.0 / 25.0; // Inverse of energy_per_mass
             
