@@ -157,7 +157,7 @@ impl ApplicationHandler for App {
                 {
                     // If the file is new (empty), write the header
                     if file.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
-                        let _ = writeln!(file, "time,num_cells,num_plants,avg_speed,avg_brain_sizex,avg_sight_r,avg_predation,avg_birth_thresh");
+                        let _ = writeln!(file, "time,num_cells,num_plants,avg_speed,avg_brain_size,avg_sight_r,avg_predation,avg_age");
                     }
                     
                     let now = Instant::now();
@@ -174,7 +174,7 @@ impl ApplicationHandler for App {
                         self.physics_solver.avg_brain_size,
                         self.physics_solver.avg_sight_r,
                         self.physics_solver.avg_pred,
-                        self.physics_solver.avg_thresh
+                        self.physics_solver.avg_age
                     );
                 }
                 

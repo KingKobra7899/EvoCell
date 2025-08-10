@@ -35,6 +35,7 @@ pub struct PhysicsSolver {
     pub avg_sight_r: f32,
     pub num_particles: i32,
     pub avg_pred: f32,
+    pub avg_age: f32,
     pub pending_deletions: Vec<usize>, // New field for deferred deletions
     pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
 }
@@ -66,6 +67,7 @@ impl PhysicsSolver {
             num_particles: 0,
             num_cells: 0,
             num_plants: 0,
+            avg_age: 0.0,
             boundary: Rect::new((width / 2) as f32, (height / 2) as f32, (width / 2) as f32, (height / 2) as f32),
             center: Vector2::new((width as f32) / 2.0, (height as f32) / 2.0),
             qt: QuadTree::new(Rect::new((width as f32) / 2.0, (height as f32) / 2.0, (width as f32) / 2.0, (height as f32) / 2.0), 5),
@@ -82,6 +84,7 @@ impl PhysicsSolver {
         self.avg_sight_r = 0.0;
         self.avg_pred = 0.0;
         self.avg_thresh = 0.0;
+        self.avg_age = 0.0;
     }
 
     pub fn add_particle_grid(
@@ -537,6 +540,7 @@ impl PhysicsSolver {
                     old_h: 0.0,
                     old_iso: 0.0,
                     old_soc: 0.0,
+                    age: 0.0,
                     adhesion: child_adhesion,
                     // Use safe_child_brain_size here
                     old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),

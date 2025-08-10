@@ -264,6 +264,7 @@ pub struct Cell {
     pub current_mass: f32,
     pub max_mass: f32,
     pub max_speed: f32,
+    pub age: f32,
     pub old_h: f32,
     pub old_iso: f32,
     pub adhesion: f32,
@@ -296,6 +297,7 @@ impl Cell {
             isolation_decoder: CognitiveDecoder::random(brain_size as usize, rng),
             Brain: DirMovementEncoder::random(rng, brain_size as usize),
             metabolic_rate: 0.0,
+            age: 0.0,
             old_h: 0.0,
             old_iso: 0.0,
             old_soc: 0.0,
@@ -556,6 +558,9 @@ impl Cell {
         if self.old_soc.is_finite() {
             world.avg_social += self.old_soc / num_cells_f32;
         }
+        if self.age.is_finite() {
+            world.avg_age += self.age / num_cells_f32;
+        }
         
         world.avg_sight_r += self.sight_r / num_cells_f32;
     
@@ -573,6 +578,7 @@ impl Cell {
            position_invalid {
             self.to_delete = true;
         }
+        self.age += 1.0;
     }
     pub fn export_brain(&self) -> BrainExport {
         BrainExport {
@@ -622,6 +628,7 @@ impl Clone for Cell {
             current_mass: self.current_mass,
             max_mass: self.max_mass,
             max_speed: self.max_speed,
+            age: self.age,
             old_h: self.old_h,
             old_iso: self.old_iso,
             old_soc: self.old_soc,
