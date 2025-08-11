@@ -541,6 +541,7 @@ impl PhysicsSolver {
                     old_iso: 0.0,
                     old_soc: 0.0,
                     age: 0.0,
+                    generation: parent_cell.generation + 1,
                     adhesion: child_adhesion,
                     // Use safe_child_brain_size here
                     old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),

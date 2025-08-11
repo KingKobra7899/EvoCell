@@ -71,11 +71,11 @@ fn handle_keyboard_input(event: KeyEvent, app: &mut App) {
             }
             Key::Named(NamedKey::ArrowRight) => {
                 if app.paused {
-                    app.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
+                    app.physics_solver.update(1E-3, 1, Vector2::new(0.0, 0.0));
                     app.time += 1E-4;
                 }else{
                     app.paused = true;
-                    app.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
+                    app.physics_solver.update(1E-3, 1, Vector2::new(0.0, 0.0));
                     app.time += 1E-4;
                 }
             }
@@ -125,8 +125,8 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if !self.paused {
                     // Update the physics simulation
-                    self.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
-                    self.time += 1E-4;
+                    self.physics_solver.update(1E-3, 2, Vector2::new(0.0, 0.0));
+                    self.time += 1E-3;
                 }
     
                 let num_physics_particles = self.physics_solver.positions.len();

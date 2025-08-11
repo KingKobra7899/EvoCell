@@ -6,13 +6,14 @@ use rand::{rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.1;
+const MUTATION_RATE: f64 = 0.5;
 
 use serde::Serialize;
 
 #[derive(Serialize)]
 struct BrainExport {
     brain_size: i32,
+    generation: i32,
     encoder_weights: Vec<f32>,
     encoder_bias: Vec<f32>,
     decoder_weights: Vec<f32>,
@@ -273,6 +274,7 @@ pub struct Cell {
     pub sight_r: f32,
     pub sight_a: f32,
     pub desired_energy: f32,
+    pub generation: i32,
     pub predation: f32,
     pub to_delete: bool, // New field to mark for deletion
 }
@@ -301,6 +303,7 @@ impl Cell {
             old_h: 0.0,
             old_iso: 0.0,
             old_soc: 0.0,
+            generation: 1,
             old_encoding: DMatrix::<f32>::zeros((brain_size) as usize, 1),
             current_mass: mass / 2.0,
             max_mass: mass,
@@ -318,7 +321,7 @@ impl Cell {
     pub fn create_child(&self, world: &mut PhysicsSolver) {
         
         
-        let child_pos: Vector2<f32> = world.positions[self.index] + Vector2::new(0.0, world.radii[self.index] * 2.5);
+        let mut child_pos: Vector2<f32> = world.positions[self.index];
         let mut child_brain_size = self.brain_size;
         let mut child_mass = self.max_mass;
         let mut child_sight_r = self.sight_r;
@@ -360,6 +363,12 @@ impl Cell {
             child_adhesion += world.rng.random_range(-0.1..0.1);
             child_adhesion = clamp(child_adhesion, 0.0, 1.0);
         }
+
+        let post_birth_mass = self.current_mass * 0.5;
+  
+
+        let r = 2.0 * post_birth_mass.sqrt();
+        child_pos += Vector2::new(r * 2.5, 0.0);
 
         // Add child to pending additions instead of directly adding
         world.pending_additions.push((child_pos, child_mass, brain_delta, child_brain_size, clamp(child_sight_r,0.0, 100.0), child_sight_a, child_pred, child_max_speed, child_adhesion, child_thresh,self.clone()));
@@ -583,6 +592,7 @@ impl Cell {
     pub fn export_brain(&self) -> BrainExport {
         BrainExport {
             brain_size: self.brain_size,
+            generation: self.generation,
             encoder_weights: self.Brain.encoder.weight_matrix.as_slice().to_vec(),
             encoder_bias: self.Brain.encoder.bias.as_slice().to_vec(),
             decoder_weights: self.Brain.decoder.weight_matrix.as_slice().to_vec(),
@@ -616,6 +626,7 @@ impl Clone for Cell {
         Cell {
             index: self.index,
             brain_size: self.brain_size,
+            generation: self.generation,
             current_energy: self.current_energy,
             state_encoder: EnvironmentalEncoder::with_weights(self.state_encoder.weight_matrix.clone(), self.state_encoder.bias.clone()),
             social_decoder: CognitiveDecoder::with_weights(self.social_decoder.weights.clone()),
