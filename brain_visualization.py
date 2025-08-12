@@ -12,7 +12,7 @@ weights_1d = np.array(brain["encoder_weights"])
 
 # In Rust: DMatrix::zeros(output_size, input_size) means (rows=output, cols=input)
 # So we reshape to (output_size, input_size)
-output_size = 9
+output_size = 8
 input_size = len(weights_1d) // output_size
 weights = weights_1d.reshape(output_size, input_size)
 

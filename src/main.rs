@@ -125,7 +125,7 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if !self.paused {
                     // Update the physics simulation
-                    self.physics_solver.update(1E-3, 2, Vector2::new(0.0, 0.0));
+                    self.physics_solver.update(1E-3, 1, Vector2::new(0.0, 0.0));
                     self.time += 1E-3;
                 }
     

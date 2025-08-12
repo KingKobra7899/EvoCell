@@ -547,7 +547,7 @@ impl PhysicsSolver {
                     old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
                     sight_r: child_sight_r,
                     sight_a: child_sight_a,
-                    desired_energy: child_mass,
+                    desired_energy: child_mass * 1.5,
                     predation: clamp(child_pred, 0.0, 1.0),
                     to_delete: false,
                 };
@@ -649,7 +649,7 @@ impl PhysicsSolver {
             self.inter_particle_collisions();
            
             self.apply_rect_constraint(self.boundary);
-            self.integrate_forces(dt / (substeps as f32), grav, 15.0, 150.0);
+            self.integrate_forces(dt / (substeps as f32), grav, 1.50, 15.0);
             //self.apply_springs(0.0);
         }
 

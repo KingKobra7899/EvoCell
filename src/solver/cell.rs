@@ -6,7 +6,7 @@ use rand::{rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.5;
+const MUTATION_RATE: f64 = 0.15;
 
 use serde::Serialize;
 
@@ -283,7 +283,7 @@ impl Cell {
     pub fn random(rng: &mut ThreadRng, mass: f32, index: usize) -> Self {
         let sight_r_dist: Normal<f32> = Normal::new(50.0, 10.0).unwrap();
         let sight_angle_dist: Normal<f32> = Normal::new(PI / 4.0, PI / 12.0).unwrap();
-        let brain_size_dist: Normal<f32> = Normal::new(9.0, 2.0).unwrap();
+        let brain_size_dist: Normal<f32> = Normal::new(6.0, 1.5).unwrap();
         let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
@@ -310,7 +310,7 @@ impl Cell {
             max_speed: max_speed,
             sight_r: sight_r_dist.sample(rng),
             sight_a: sight_angle_dist.sample(rng),
-            desired_energy: mass,
+            desired_energy: mass*1.5,
             predation: predation_dist.sample(rng),
             adhesion: predation_dist.sample(rng),
             birth_threshold: clamp(predation_dist.sample(rng) + 0.25, 0.5, 1.0),
@@ -319,8 +319,6 @@ impl Cell {
     }
 
     pub fn create_child(&self, world: &mut PhysicsSolver) {
-        
-        
         let mut child_pos: Vector2<f32> = world.positions[self.index];
         let mut child_brain_size = self.brain_size;
         let mut child_mass = self.max_mass;
@@ -331,47 +329,49 @@ impl Cell {
         let mut child_max_speed = self.max_speed;
         let mut child_thresh = self.birth_threshold;
         let brain_delta: i32 = 0;
-
+    
+        // Reduced mutation magnitudes for stability
         if world.rng.random_range(0.0..1.0) < (MUTATION_RATE) {
-            //brain_delta = world.rng.random_range(-2..2);
-            child_brain_size += brain_delta;
+            child_mass += clamp(world.rng.random_range(-0.5..0.5) as f32, 5.0, 100.0); // Smaller changes
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_mass += clamp(world.rng.random_range(-1..1) as f32, 5.0, 100.0);
+            child_sight_r += world.rng.random_range(-1.0..1.0) as f32; // Smaller changes
+            child_sight_r = clamp(child_sight_r, 15.0, 60.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_sight_r += world.rng.random_range(-2.0..2.0) as f32;
+            child_sight_a += world.rng.random_range(-0.02..0.02) as f32; // Smaller changes
+            child_sight_a = clamp(child_sight_a, PI/12.0, PI/3.0);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_sight_a += world.rng.random_range(-0.05..0.05) as f32;
-            child_sight_a = clamp(child_sight_a, 0.0, PI / 2.0);
+            child_pred += world.rng.random_range(-0.005..0.005) as f32; // Much smaller
+            child_pred = clamp(child_pred, 0.1, 0.7);
         }
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_pred += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.0, 1.0);
-        }
-        if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_thresh += clamp(world.rng.random_range(-0.01..0.01) as f32, 0.5, 1.0);
+            child_thresh += world.rng.random_range(-0.005..0.005) as f32; // Much smaller
+            child_thresh = clamp(child_thresh, 0.65, 0.9);
         }
         
-
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_max_speed += world.rng.random_range(-0.01..0.01);
-            child_max_speed = clamp(child_max_speed, 0.0, 50.0);
+            child_max_speed += world.rng.random_range(-0.005..0.005); // Much smaller
+            child_max_speed = clamp(child_max_speed, 0.05, 0.5);
         }
-
+    
         if world.rng.random_range(0.0..1.0) < MUTATION_RATE {
-            child_adhesion += world.rng.random_range(-0.1..0.1);
-            child_adhesion = clamp(child_adhesion, 0.0, 1.0);
+            child_adhesion += world.rng.random_range(-0.02..0.02); // Smaller
+            child_adhesion = clamp(child_adhesion, 0.1, 0.8);
         }
-
-        let post_birth_mass = self.current_mass * 0.5;
-  
-
+    
+        // More conservative post-birth energy cost
+        let post_birth_mass = self.current_mass * 0.6; // Less harsh
+    
         let r = 2.0 * post_birth_mass.sqrt();
         child_pos += Vector2::new(r * 2.5, 0.0);
-
-        // Add child to pending additions instead of directly adding
-        world.pending_additions.push((child_pos, child_mass, brain_delta, child_brain_size, clamp(child_sight_r,0.0, 100.0), child_sight_a, child_pred, child_max_speed, child_adhesion, child_thresh,self.clone()));
+    
+        world.pending_additions.push((
+            child_pos, child_mass, brain_delta, child_brain_size, 
+            child_sight_r, child_sight_a, child_pred, child_max_speed, 
+            child_adhesion, child_thresh, self.clone()
+        ));
     }
 
     pub fn encode_environment(&self, world: &PhysicsSolver) -> DMatrix<f32> {
@@ -497,14 +497,11 @@ impl Cell {
     
         // ----- Metabolic Calculations -----
         // Basal metabolic rate using Kleiber's law (3/4 power scaling)
-        let basal_cost = 0.015 * self.current_mass.powf(0.75);
+        let basal_cost = 0.008 * self.current_mass.powf(0.7); // Reduced and gentler scaling
+        let brain_cost = 0.001 * (self.brain_size as f32).powf(0.75); // Reduced brain cost
         
-        // Brain maintenance cost
-        let brain_cost = 0.002 * (self.brain_size as f32).powf(0.8);
-        
-        // Movement cost proportional to kinetic energy
         let movement_magnitude = movement_vec.magnitude();
-        let move_cost = 0.005 * self.current_mass * movement_magnitude.powi(2);
+        let move_cost = 0.002 * self.current_mass * movement_magnitude.powi(2); // Reduced movement cost
         
         self.metabolic_rate = basal_cost + brain_cost + move_cost;
         self.current_energy -= self.metabolic_rate;
@@ -531,13 +528,34 @@ impl Cell {
             self.current_energy -= energy_to_convert;
         }
     
-        // ----- Reproduction -----
-        if self.current_mass >= self.max_mass * self.birth_threshold && self.current_energy > self.desired_energy * self.birth_threshold {
+        if self.current_energy < starvation_threshold {
+            // Gentler mass-to-energy conversion
+            let mass_conversion_rate = 0.003; // Reduced from 0.005
+            let mass_loss = mass_conversion_rate * self.current_mass;
+            let energy_per_mass = 30.0; // Higher efficiency
+            
+            self.current_mass -= mass_loss;
+            self.current_energy += mass_loss * energy_per_mass;
+        } else if self.current_energy > surplus_threshold {
+            // More efficient energy-to-mass conversion
+            let energy_conversion_rate = 0.001; // Increased from 0.0005
+            let energy_to_convert = energy_conversion_rate * (self.current_energy - self.desired_energy);
+            let mass_per_energy = 1.0 / 30.0; // Match the efficiency above
+            
+            self.current_mass += energy_to_convert * mass_per_energy;
+            self.current_energy -= energy_to_convert;
+        }
+    
+        // ----- Reproduction (TUNED) -----
+        // More achievable reproduction conditions
+        if self.current_mass >= self.max_mass * self.birth_threshold && 
+           self.current_energy > self.desired_energy * (self.birth_threshold * 0.8) { // Easier energy requirement
+            
             self.create_child(world);
             
-            // Post-reproduction costs
-            self.current_energy -=  self.desired_energy * 0.5;
-            self.current_mass -= self.max_mass * 0.5;
+            // Less harsh post-reproduction costs
+            self.current_energy -= self.desired_energy * 0.3; // Reduced from 0.5
+            self.current_mass -= self.max_mass * 0.3; // Reduced from 0.5
         }
     
         // Ensure mass stays within reasonable bounds
