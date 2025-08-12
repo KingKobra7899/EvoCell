@@ -35,6 +35,7 @@ pub struct PhysicsSolver {
     pub avg_sight_r: f32,
     pub num_particles: i32,
     pub avg_pred: f32,
+    pub avg_age: f32,
     pub pending_deletions: Vec<usize>, // New field for deferred deletions
     pub pending_additions: Vec<(Vector2<f32>, f32, i32, i32, f32, f32, f32, f32, f32, f32, Cell)>, // New field for deferred additions
 }
@@ -66,6 +67,7 @@ impl PhysicsSolver {
             num_particles: 0,
             num_cells: 0,
             num_plants: 0,
+            avg_age: 0.0,
             boundary: Rect::new((width / 2) as f32, (height / 2) as f32, (width / 2) as f32, (height / 2) as f32),
             center: Vector2::new((width as f32) / 2.0, (height as f32) / 2.0),
             qt: QuadTree::new(Rect::new((width as f32) / 2.0, (height as f32) / 2.0, (width as f32) / 2.0, (height as f32) / 2.0), 5),
@@ -82,6 +84,7 @@ impl PhysicsSolver {
         self.avg_sight_r = 0.0;
         self.avg_pred = 0.0;
         self.avg_thresh = 0.0;
+        self.avg_age = 0.0;
     }
 
     pub fn add_particle_grid(
@@ -220,7 +223,7 @@ impl PhysicsSolver {
             self.accelerations[i] = Vector2::new(0.0, 0.0);
     
             // Radius based on mass
-            self.radii[i] = f32::max(5.0 * self.masses[i].sqrt() * 0.5, 2.0);
+            self.radii[i] = f32::max(self.masses[i].sqrt() * 2.0, 2.0);
         }
     }
     
@@ -354,7 +357,7 @@ impl PhysicsSolver {
     
         let mut forces_to_apply = Vec::new();
     
-        for i in self.qt.query(&expanded_rect) {
+        for i in 0..self.num_particles {
             let pos = &mut self.positions[i as usize];
             let r = self.radii[i as usize];
     
@@ -366,36 +369,40 @@ impl PhysicsSolver {
             // Top boundary
             if pos.y - r < y_top {
                 pos.y = y_top + r;
+                self.masses[i as usize]*= 0.999;
                 if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
-                    forces_to_apply.push((i as usize, Vector2::new(0.0, push_force)));
+                    //forces_to_apply.push((i as usize, Vector2::new(0.0, push_force)));
                 }
             // Bottom boundary
             } else if pos.y + r > y_bottom {
                 pos.y = y_bottom - r;
+                self.masses[i as usize]*= 0.999;
                 if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
-                    forces_to_apply.push((i as usize, Vector2::new(0.0, -push_force)));
+                    //forces_to_apply.push((i as usize, Vector2::new(0.0, -push_force)));
                 }
             }
     
             // Left boundary
             if pos.x - r < x_left {
                 pos.x = x_left + r;
+                self.masses[i as usize]*= 0.999;
                 if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
-                    forces_to_apply.push((i as usize, Vector2::new(push_force, 0.0)));
+                    //forces_to_apply.push((i as usize, Vector2::new(push_force, 0.0)));
                 }
             // Right boundary
             } else if pos.x + r > x_right {
                 pos.x = x_right - r;
+                self.masses[i as usize]*= 0.999;
                 if self.rng.random_range(0.0..1.0) < 0.0 {
                     self.pending_deletions.push(i as usize);
                 } else {
-                    forces_to_apply.push((i as usize, Vector2::new(-push_force, 0.0)));
+                    //forces_to_apply.push((i as usize, Vector2::new(-push_force, 0.0)));
                 }
             }
         }
@@ -418,13 +425,13 @@ impl PhysicsSolver {
         self.pending_deletions.reverse();
 
         let deletions_to_process: Vec<usize> = self.pending_deletions.clone();
-self.pending_deletions.clear();
+        self.pending_deletions.clear();
 
-for index in deletions_to_process {
-   if index < self.num_particles as usize {
-       self.delete_particle_immediate(index);
-   }
-}
+        for index in deletions_to_process {
+        if index < self.num_particles as usize {
+            self.delete_particle_immediate(index);
+        }
+        }
 
         self.pending_deletions.clear();
     }
@@ -533,12 +540,14 @@ for index in deletions_to_process {
                     old_h: 0.0,
                     old_iso: 0.0,
                     old_soc: 0.0,
+                    age: 0.0,
+                    generation: parent_cell.generation + 1,
                     adhesion: child_adhesion,
                     // Use safe_child_brain_size here
                     old_encoding: nalgebra::DMatrix::<f32>::zeros(safe_child_brain_size as usize, 1),
                     sight_r: child_sight_r,
                     sight_a: child_sight_a,
-                    desired_energy: child_mass,
+                    desired_energy: child_mass * 1.5,
                     predation: clamp(child_pred, 0.0, 1.0),
                     to_delete: false,
                 };
@@ -569,7 +578,7 @@ for index in deletions_to_process {
         
         for point in points {
             let pos: Vector2<f32> = Vector2::new((point[0] + 10.0) as f32, (point[1] + 10.0) as f32);
-            let mass = self.rng.random_range(6.0..10.0);
+            let mass = self.rng.random_range(6.0..20.0);
             
             if self.rng.random_range(0.0..1.0) < plant_ratio {
                 self.add_plant(pos, mass, mass, Vector2::new(0.0, 0.0));
@@ -579,10 +588,34 @@ for index in deletions_to_process {
         }
     }
 
-    pub fn random_spawn_plant(&mut self) {
-        let pos: Vector2<f32> = Vector2::new(self.rng.random_range(0.0..self.width as f32), self.rng.random_range(0.0..self.height as f32));
-        let mass = self.rng.random_range(6.0..10.0);
-        self.add_plant(pos, mass, mass, Vector2::new(0.0, 0.0));
+    pub fn random_spawn_plant_cluster(&mut self, n: usize, cluster_radius: f32) {
+        // Choose a random center point for the cluster
+        let center: Vector2<f32> = Vector2::new(
+            self.rng.random_range(cluster_radius..(self.width as f32 - cluster_radius)),
+            self.rng.random_range(cluster_radius..(self.height as f32 - cluster_radius))
+        );
+        
+        for _ in 0..n {
+            // Generate random offset within cluster radius
+            let angle = self.rng.random_range(0.0..std::f32::consts::TAU);
+            let distance = self.rng.random_range(0.0..cluster_radius);
+            
+            let offset = Vector2::new(
+                angle.cos() * distance,
+                angle.sin() * distance
+            );
+            
+            let pos = center + offset;
+            
+            // Ensure the position stays within bounds
+            let clamped_pos = Vector2::new(
+                pos.x.clamp(0.0, self.width as f32),
+                pos.y.clamp(0.0, self.height as f32)
+            );
+            
+            let mass = self.rng.random_range(6.0..10.0);
+            self.add_plant(clamped_pos, mass, mass, Vector2::new(0.0, 0.0));
+        }
     }
 
     pub fn update(&mut self, dt: f32, substeps: i32, grav: Vector2<f32>) {
@@ -611,19 +644,19 @@ for index in deletions_to_process {
     
             // Update physics
             
-            self.integrate_forces(dt / (substeps as f32), grav, 15.0, 150.0);
+            
 
             self.inter_particle_collisions();
            
             self.apply_rect_constraint(self.boundary);
+            self.integrate_forces(dt / (substeps as f32), grav, 1.50, 15.0);
             //self.apply_springs(0.0);
         }
 
-        let base_rate = 0.01;
-        let growth_probability = (base_rate * (self.num_plants as f32)).sqrt(); // or use linear: base_rate * self.num_cells as f32
-        if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells < 100 {
-            self.random_spawn_plant();
-            self.random_spawn_plant();
+        
+        let growth_probability: f32 = 0.0075; // or use linear: base_rate * self.num_cells as f32
+        if self.rng.random_range(0.0..1.0) < growth_probability.min(1.0) && self.num_cells < 200 {
+            self.random_spawn_plant_cluster(10,100.0);
         }
         if self.num_cells == 0 {
             self.init_world(10, 0.0);

@@ -13,8 +13,8 @@ use winit::{
 mod solver;
 mod gpu_renderer; // Import our new module
 
-const WIDTH: usize = 1500;
-const HEIGHT: usize = 1500;
+const WIDTH: usize = 1600;
+const HEIGHT: usize = 1600;
 
 struct App {
     window: Option<Window>,
@@ -32,7 +32,7 @@ impl App {
         let mut physics_solver = solver::PhysicsSolver::new(WIDTH as i32, HEIGHT as i32);
         
         
-        physics_solver.init_world(2000, 0.9);
+        physics_solver.init_world(3000, 0.99);
         
         Self {
             window: None,
@@ -71,11 +71,11 @@ fn handle_keyboard_input(event: KeyEvent, app: &mut App) {
             }
             Key::Named(NamedKey::ArrowRight) => {
                 if app.paused {
-                    app.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
+                    app.physics_solver.update(1E-3, 1, Vector2::new(0.0, 0.0));
                     app.time += 1E-4;
                 }else{
                     app.paused = true;
-                    app.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
+                    app.physics_solver.update(1E-3, 1, Vector2::new(0.0, 0.0));
                     app.time += 1E-4;
                 }
             }
@@ -125,8 +125,8 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if !self.paused {
                     // Update the physics simulation
-                    self.physics_solver.update(1E-4, 1, Vector2::new(0.0, 0.0));
-                    self.time += 1E-4;
+                    self.physics_solver.update(1E-3, 1, Vector2::new(0.0, 0.0));
+                    self.time += 1E-3;
                 }
     
                 let num_physics_particles = self.physics_solver.positions.len();
@@ -157,7 +157,7 @@ impl ApplicationHandler for App {
                 {
                     // If the file is new (empty), write the header
                     if file.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
-                        let _ = writeln!(file, "time,num_cells,num_plants,avg_speed,avg_brain_sizex,avg_sight_r,avg_predation,avg_birth_thresh");
+                        let _ = writeln!(file, "time,num_cells,num_plants,avg_speed,avg_brain_size,avg_sight_r,avg_predation,avg_age");
                     }
                     
                     let now = Instant::now();
@@ -174,7 +174,7 @@ impl ApplicationHandler for App {
                         self.physics_solver.avg_brain_size,
                         self.physics_solver.avg_sight_r,
                         self.physics_solver.avg_pred,
-                        self.physics_solver.avg_thresh
+                        self.physics_solver.avg_age
                     );
                 }
                 
