@@ -232,5 +232,5 @@ fn main() {
     let mut app = App::new();
 
     event_loop.run_app(&mut app).expect("EventLoop run failed");
-    app.physics_solver.save_random_creature(); // Save a random creature's brain at the end
+    app.physics_solver.save_all_creatures();
 }

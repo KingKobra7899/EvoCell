@@ -668,6 +668,13 @@ impl PhysicsSolver {
         let cell = &self.cells[index];
         cell.save_brain_to_file("brain.json").expect("Failed to save brain");
     }
+
+    pub fn save_all_creatures(&mut self) {
+        for cell in &self.cells {
+            let filename:String = format!("brains/brain_{}.json", &cell.index);
+            cell.save_brain_to_file(filename.as_str()).expect("Failed to save brain");
+        }
+    }
 }
 
 pub fn sigmoid(x: f32) -> f32 {
