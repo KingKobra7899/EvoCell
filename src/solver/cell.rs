@@ -6,7 +6,7 @@ use rand::{rngs::ThreadRng, seq::SliceRandom as _, Rng};
 use rand_distr::{Normal, Distribution};
 use crate::solver::{quadtree::Rect, PhysicsSolver};
 
-const MUTATION_RATE: f64 = 0.1;
+const MUTATION_RATE: f64 = 0.2;
 
 use serde::Serialize;
 
@@ -280,7 +280,7 @@ impl Cell {
     pub fn random(rng: &mut ThreadRng, mass: f32, index: usize) -> Self {
         let sight_r_dist: Normal<f32> = Normal::new(50.0, 10.0).unwrap();
         let sight_angle_dist: Normal<f32> = Normal::new(PI / 4.0, PI / 12.0).unwrap();
-        let brain_size_dist: Normal<f32> = Normal::new(9.0, 2.0).unwrap();
+        let brain_size_dist: Normal<f32> = Normal::new(20.0, 2.0).unwrap();
         let predation_dist: Normal<f32> = Normal::new(0.5, 0.1).unwrap();
 
         let brain_size: i32 = brain_size_dist.sample(rng) as i32;
