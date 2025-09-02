@@ -306,7 +306,7 @@ impl Cell {
             sight_r: sight_r_dist.sample(rng),
             sight_a: sight_angle_dist.sample(rng),
             desired_energy: mass,
-            predation: predation_dist.sample(rng),
+            predation: rng.random_range(0.0..1.0),
             adhesion: predation_dist.sample(rng),
             birth_threshold: clamp(predation_dist.sample(rng) + 0.25, 0.5, 1.0),
             to_delete: false,
