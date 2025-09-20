@@ -366,8 +366,8 @@ impl PhysicsSolver {
             // Top boundary
             if pos.y - r < y_top {
                 pos.y = y_top + r;
-                self.masses[i as usize]*= 0.999;
-                if self.rng.random_range(0.0..1.0) < 0.0 {
+                self.masses[i as usize]*= 0.99;
+                if self.rng.random_range(0.0..1.0) < 0.1 {
                     self.pending_deletions.push(i as usize);
                 } else {
                     //forces_to_apply.push((i as usize, Vector2::new(0.0, push_force)));
@@ -375,8 +375,8 @@ impl PhysicsSolver {
             // Bottom boundary
             } else if pos.y + r > y_bottom {
                 pos.y = y_bottom - r;
-                self.masses[i as usize]*= 0.999;
-                if self.rng.random_range(0.0..1.0) < 0.0 {
+                self.masses[i as usize]*= 0.99;
+                if self.rng.random_range(0.0..1.0) < 0.1 {
                     self.pending_deletions.push(i as usize);
                 } else {
                     //forces_to_apply.push((i as usize, Vector2::new(0.0, -push_force)));
@@ -386,8 +386,8 @@ impl PhysicsSolver {
             // Left boundary
             if pos.x - r < x_left {
                 pos.x = x_left + r;
-                self.masses[i as usize]*= 0.999;
-                if self.rng.random_range(0.0..1.0) < 0.0 {
+                self.masses[i as usize]*= 0.99;
+                if self.rng.random_range(0.0..1.0) < 0.1 {
                     self.pending_deletions.push(i as usize);
                 } else {
                     //forces_to_apply.push((i as usize, Vector2::new(push_force, 0.0)));
@@ -395,8 +395,8 @@ impl PhysicsSolver {
             // Right boundary
             } else if pos.x + r > x_right {
                 pos.x = x_right - r;
-                self.masses[i as usize]*= 0.999;
-                if self.rng.random_range(0.0..1.0) < 0.0 {
+                self.masses[i as usize]*= 0.99;
+                if self.rng.random_range(0.0..1.0) < 0.1 {
                     self.pending_deletions.push(i as usize);
                 } else {
                     //forces_to_apply.push((i as usize, Vector2::new(-push_force, 0.0)));
